@@ -1,0 +1,32 @@
+[
+  {
+    "input": null,
+    "name": null,
+    "name_key": null,
+    "ref_suffix": null
+  },
+  {
+    "input": "   ",
+    "name": null,
+    "name_key": null,
+    "ref_suffix": null
+  },
+  {
+    "input": "  Ｇｒａｎｄｅ  ",
+    "name": "Grande",
+    "name_key": "grande",
+    "ref_suffix": "Z3JhbmRl"
+  },
+  {
+    "input": " Café ",
+    "name": "Café",
+    "name_key": "café",
+    "ref_suffix": "Y2Fmw6k"
+  },
+  {
+    "input": "①",
+    "name": "1",
+    "name_key": "1",
+    "ref_suffix": "MQ"
+  }
+]

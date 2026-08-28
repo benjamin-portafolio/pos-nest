@@ -1,0 +1,55 @@
+export const INVENTORY_UNIT_IDS = {
+  piece: '10000000-0000-4000-8000-000000000001',
+  gram: '10000000-0000-4000-8000-000000000002',
+  kilogram: '10000000-0000-4000-8000-000000000003',
+  milliliter: '10000000-0000-4000-8000-000000000004',
+  liter: '10000000-0000-4000-8000-000000000005',
+} as const;
+
+export const INVENTORY_UNIT_SEED = [
+  {
+    unitId: INVENTORY_UNIT_IDS.piece,
+    code: 'piece',
+    name: 'Pieza',
+    symbol: 'pza',
+    dimension: 'count',
+    atomicFactor: 1,
+    maxFractionDigits: 0,
+  },
+  {
+    unitId: INVENTORY_UNIT_IDS.gram,
+    code: 'g',
+    name: 'Gramo',
+    symbol: 'g',
+    dimension: 'mass',
+    atomicFactor: 1,
+    maxFractionDigits: 0,
+  },
+  {
+    unitId: INVENTORY_UNIT_IDS.kilogram,
+    code: 'kg',
+    name: 'Kilogramo',
+    symbol: 'kg',
+    dimension: 'mass',
+    atomicFactor: 1000,
+    maxFractionDigits: 3,
+  },
+  {
+    unitId: INVENTORY_UNIT_IDS.milliliter,
+    code: 'ml',
+    name: 'Mililitro',
+    symbol: 'ml',
+    dimension: 'volume',
+    atomicFactor: 1,
+    maxFractionDigits: 0,
+  },
+  {
+    unitId: INVENTORY_UNIT_IDS.liter,
+    code: 'l',
+    name: 'Litro',
+    symbol: 'L',
+    dimension: 'volume',
+    atomicFactor: 1000,
+    maxFractionDigits: 3,
+  },
+] as const;
