@@ -16,6 +16,9 @@ export class InventoryBalanceEntity {
   @Column({ name: 'quantity_available_atomic', type: 'bigint' })
   quantityAvailableAtomic: string;
 
+  @Column({ type: 'integer', default: 1 })
+  version: number;
+
   @Column('uuid', { name: 'last_event_id' })
   lastEventId: string;
 

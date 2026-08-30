@@ -9,15 +9,27 @@ import { InventoryMovementEntity } from '../entities/inventory-movement.entity';
 import { UnitEntity } from '../entities/unit.entity';
 import { EventSyncStatus } from '../enums/event-sync-status.enum';
 import type { PushEventDto, PushEventResultDto } from './dto/push-events.dto';
+import { MAX_SAFE_ATOMIC_QUANTITY } from './payloads/inventory-movement.payload';
+import { MovimientoInventarioRegistradoPayload } from './payloads/movimiento-inventario-registrado.payload';
+import { RecursoInventarioActualizadoPayload } from './payloads/recurso-inventario-actualizado.payload';
 import { RecursoInventarioCreadoPayload } from './payloads/recurso-inventario-creado.payload';
 import { SyncConflictService } from './sync-conflict.service';
+
+type InventoryPayload =
+  | RecursoInventarioCreadoPayload
+  | RecursoInventarioActualizadoPayload
+  | MovimientoInventarioRegistradoPayload;
 
 @Injectable()
 export class InventoryEventHandler {
   constructor(private readonly syncConflictService: SyncConflictService) {}
 
   supports(eventType: string): boolean {
-    return eventType === RecursoInventarioCreadoPayload.eventType;
+    return (
+      eventType === RecursoInventarioCreadoPayload.eventType ||
+      eventType === RecursoInventarioActualizadoPayload.eventType ||
+      eventType === MovimientoInventarioRegistradoPayload.eventType
+    );
   }
 
   async apply(
@@ -28,27 +40,31 @@ export class InventoryEventHandler {
     if (identityError)
       return this.rejectedResult(event.event_id, identityError);
 
-    if (event.event_type === RecursoInventarioCreadoPayload.eventType) {
-      return this.applyCreation(manager, event);
+    switch (event.event_type) {
+      case RecursoInventarioCreadoPayload.eventType:
+        return this.applyCreation(manager, event);
+      case RecursoInventarioActualizadoPayload.eventType:
+        return this.applyUpdate(manager, event);
+      case MovimientoInventarioRegistradoPayload.eventType:
+        return this.applyMovement(manager, event);
+      default:
+        return this.rejectedResult(
+          event.event_id,
+          `Evento de inventario no soportado: ${event.event_type}`,
+        );
     }
-    return this.rejectedResult(
-      event.event_id,
-      `Evento de inventario no soportado: ${event.event_type}`,
-    );
   }
 
   private async applyCreation(
     manager: EntityManager,
     event: PushEventDto,
   ): Promise<PushEventResultDto> {
-    let payload: RecursoInventarioCreadoPayload;
-    try {
-      payload = RecursoInventarioCreadoPayload.fromJson(event.payload);
-    } catch (error) {
-      return this.saveRejectedEvent(manager, event, this.errorMessage(error));
+    const parsed = this.parsePayload(event);
+    if ('error' in parsed) {
+      return this.saveRejectedEvent(manager, event, parsed.error);
     }
-
-    const envelopeError = this.validateEnvelope(event, payload);
+    const payload = parsed.payload as RecursoInventarioCreadoPayload;
+    const envelopeError = this.validateCreationEnvelope(event, payload);
     if (envelopeError) {
       return this.saveRejectedEvent(manager, event, envelopeError);
     }
@@ -73,6 +89,7 @@ export class InventoryEventHandler {
         'inventory_item',
         event.aggregate_id,
         existingItem.createdEventId,
+        'aggregate_id_conflict',
       );
     }
 
@@ -92,13 +109,11 @@ export class InventoryEventHandler {
         'inventory_movement',
         movement!.movementId,
         existingMovement.eventId,
+        'movement_id_conflict',
       );
     }
 
-    const canonicalEvent: PushEventDto = {
-      ...event,
-      payload: payload.toJson(),
-    };
+    const canonicalEvent = { ...event, payload: payload.toJson() };
     const savedEvent = await this.saveEvent(
       manager,
       canonicalEvent,
@@ -141,13 +156,17 @@ export class InventoryEventHandler {
     await manager.save(
       manager.create(InventoryBalanceEntity, {
         inventoryItemId: item.id,
-        quantityOnHandAtomic: '0',
-        quantityAvailableAtomic: '0',
+        quantityOnHandAtomic: movement
+          ? String(movement.quantityDeltaAtomic)
+          : '0',
+        quantityAvailableAtomic: movement
+          ? String(movement.quantityDeltaAtomic)
+          : '0',
+        version: 1,
         lastEventId: event.event_id,
         lastServerSequence: savedEvent.serverSequence,
       }),
     );
-
     if (movement) {
       await manager.save(
         manager.create(InventoryMovementEntity, {
@@ -155,7 +174,7 @@ export class InventoryEventHandler {
           inventoryItemId: item.id,
           saleItemId: null,
           eventId: event.event_id,
-          reversalOfMovementId: null,
+          reversalOfMovementId: movement.reversalOfMovementId,
           movementType: movement.movementType,
           quantityDeltaAtomic: String(movement.quantityDeltaAtomic),
           totalCostMinor: null,
@@ -164,24 +183,224 @@ export class InventoryEventHandler {
           serverSequence: savedEvent.serverSequence,
         }),
       );
-      const lockedBalance = await manager.findOneOrFail(
-        InventoryBalanceEntity,
-        {
-          where: { inventoryItemId: item.id },
-          lock: { mode: 'pessimistic_write' },
-        },
-      );
-      const updated = (
-        BigInt(lockedBalance.quantityOnHandAtomic) +
-        BigInt(movement.quantityDeltaAtomic)
-      ).toString();
-      lockedBalance.quantityOnHandAtomic = updated;
-      lockedBalance.quantityAvailableAtomic = updated;
-      lockedBalance.lastEventId = event.event_id;
-      lockedBalance.lastServerSequence = savedEvent.serverSequence;
-      await manager.save(lockedBalance);
+    }
+    return this.toResult(savedEvent, 'accepted');
+  }
+
+  private async applyUpdate(
+    manager: EntityManager,
+    event: PushEventDto,
+  ): Promise<PushEventResultDto> {
+    const parsed = this.parsePayload(event);
+    if ('error' in parsed) {
+      return this.saveRejectedEvent(manager, event, parsed.error);
+    }
+    const payload = parsed.payload as RecursoInventarioActualizadoPayload;
+    const envelopeError = this.validateMutableEnvelope(event);
+    if (envelopeError) {
+      return this.saveRejectedEvent(manager, event, envelopeError);
     }
 
+    const item = await manager.findOne(InventoryItemEntity, {
+      where: { id: event.aggregate_id },
+      lock: { mode: 'pessimistic_write' },
+    });
+    if (!item) {
+      return this.saveConflict(
+        manager,
+        event,
+        payload,
+        'No existe el recurso de inventario que se intenta actualizar.',
+        'inventory_item',
+        event.aggregate_id,
+        null,
+        'missing_aggregate',
+      );
+    }
+    const baseError = this.validateBase(event, payload.baseEventId, item);
+    if (baseError || item.name !== payload.previousName) {
+      return this.saveConflict(
+        manager,
+        event,
+        payload,
+        baseError ?? 'El nombre cambió desde la base de la edición.',
+        'inventory_item',
+        item.id,
+        item.lastEventId ?? item.createdEventId,
+        'concurrent_inventory_item_update',
+      );
+    }
+
+    const canonicalEvent = { ...event, payload: payload.toJson() };
+    const savedEvent = await this.saveEvent(
+      manager,
+      canonicalEvent,
+      EventSyncStatus.SYNCED,
+    );
+    await this.saveEventRefs(
+      manager,
+      canonicalEvent,
+      payload,
+      savedEvent.serverSequence,
+    );
+    item.name = payload.nextName;
+    item.version += 1;
+    item.lastEventId = event.event_id;
+    item.lastServerSequence = savedEvent.serverSequence;
+    await manager.save(item);
+    return this.toResult(savedEvent, 'accepted');
+  }
+
+  private async applyMovement(
+    manager: EntityManager,
+    event: PushEventDto,
+  ): Promise<PushEventResultDto> {
+    const parsed = this.parsePayload(event);
+    if ('error' in parsed) {
+      return this.saveRejectedEvent(manager, event, parsed.error);
+    }
+    const payload = parsed.payload as MovimientoInventarioRegistradoPayload;
+    const envelopeError = this.validateMutableEnvelope(event);
+    if (envelopeError) {
+      return this.saveRejectedEvent(manager, event, envelopeError);
+    }
+    if (payload.movement.movementType === 'initial_balance') {
+      return this.saveRejectedEvent(
+        manager,
+        event,
+        'initial_balance solo puede formar parte de recurso_inventario_creado.',
+      );
+    }
+
+    const item = await manager.findOne(InventoryItemEntity, {
+      where: { id: event.aggregate_id },
+      lock: { mode: 'pessimistic_write' },
+    });
+    if (!item) {
+      return this.saveConflict(
+        manager,
+        event,
+        payload,
+        'No existe el recurso del movimiento.',
+        'inventory_item',
+        event.aggregate_id,
+        null,
+        'missing_aggregate',
+      );
+    }
+    const baseError = this.validateBase(event, payload.baseEventId, item);
+    if (baseError) {
+      return this.saveConflict(
+        manager,
+        event,
+        payload,
+        baseError,
+        'inventory_item',
+        item.id,
+        item.lastEventId ?? item.createdEventId,
+        'concurrent_inventory_movement',
+      );
+    }
+
+    const existingMovement = await manager.findOne(InventoryMovementEntity, {
+      where: { movementId: payload.movement.movementId },
+      lock: { mode: 'pessimistic_write' },
+    });
+    if (existingMovement) {
+      return this.saveConflict(
+        manager,
+        event,
+        payload,
+        `Ya existe un movimiento con id ${payload.movement.movementId}.`,
+        'inventory_movement',
+        payload.movement.movementId,
+        existingMovement.eventId,
+        'movement_id_conflict',
+      );
+    }
+
+    if (payload.movement.reversalOfMovementId) {
+      const reversed = await manager.findOne(InventoryMovementEntity, {
+        where: { movementId: payload.movement.reversalOfMovementId },
+        lock: { mode: 'pessimistic_read' },
+      });
+      if (!reversed || reversed.inventoryItemId !== item.id) {
+        return this.saveRejectedEvent(
+          manager,
+          event,
+          'reversal_of_movement_id debe pertenecer al mismo recurso.',
+        );
+      }
+    }
+
+    const balance = await manager.findOne(InventoryBalanceEntity, {
+      where: { inventoryItemId: item.id },
+      lock: { mode: 'pessimistic_write' },
+    });
+    if (!balance) {
+      return this.saveConflict(
+        manager,
+        event,
+        payload,
+        'El recurso no tiene un saldo materializado.',
+        'inventory_item',
+        item.id,
+        item.lastEventId ?? item.createdEventId,
+        'missing_inventory_balance',
+      );
+    }
+    const onHand = this.safeAdd(
+      balance.quantityOnHandAtomic,
+      payload.movement.quantityDeltaAtomic,
+    );
+    const available = this.safeAdd(
+      balance.quantityAvailableAtomic,
+      payload.movement.quantityDeltaAtomic,
+    );
+    if ('error' in onHand || 'error' in available) {
+      return this.saveRejectedEvent(
+        manager,
+        event,
+        'El saldo de inventario se desbordaría.',
+      );
+    }
+
+    const canonicalEvent = { ...event, payload: payload.toJson() };
+    const savedEvent = await this.saveEvent(
+      manager,
+      canonicalEvent,
+      EventSyncStatus.SYNCED,
+    );
+    await this.saveEventRefs(
+      manager,
+      canonicalEvent,
+      payload,
+      savedEvent.serverSequence,
+    );
+    await manager.save(
+      manager.create(InventoryMovementEntity, {
+        movementId: payload.movement.movementId,
+        inventoryItemId: item.id,
+        saleItemId: null,
+        eventId: event.event_id,
+        reversalOfMovementId: payload.movement.reversalOfMovementId,
+        movementType: payload.movement.movementType,
+        quantityDeltaAtomic: String(payload.movement.quantityDeltaAtomic),
+        totalCostMinor: null,
+        reason: payload.movement.reason,
+        createdAtLocal: new Date(event.created_at_local),
+        serverSequence: savedEvent.serverSequence,
+      }),
+    );
+    balance.quantityOnHandAtomic = onHand.value;
+    balance.quantityAvailableAtomic = available.value;
+    balance.version += 1;
+    balance.lastEventId = event.event_id;
+    balance.lastServerSequence = savedEvent.serverSequence;
+    item.version += 1;
+    item.lastEventId = event.event_id;
+    item.lastServerSequence = savedEvent.serverSequence;
+    await manager.save([balance, item]);
     return this.toResult(savedEvent, 'accepted');
   }
 
@@ -189,39 +408,63 @@ export class InventoryEventHandler {
     manager: EntityManager,
     event: PushEventDto,
   ): Promise<PushEventResultDto> {
-    let payload: RecursoInventarioCreadoPayload;
-    try {
-      payload = RecursoInventarioCreadoPayload.fromJson(event.payload);
-    } catch (error) {
-      return this.saveRejectedEvent(manager, event, this.errorMessage(error));
+    const parsed = this.parsePayload(event);
+    if ('error' in parsed) {
+      return this.saveRejectedEvent(manager, event, parsed.error);
     }
-    const existingItem = await manager.findOneBy(InventoryItemEntity, {
-      id: event.aggregate_id,
-    });
-    if (existingItem) {
-      return this.saveConflict(
-        manager,
-        event,
-        payload,
-        `Ya existe un recurso de inventario con id ${event.aggregate_id}.`,
-        'inventory_item',
-        event.aggregate_id,
-        existingItem.createdEventId,
-      );
-    }
-    const movementId = payload.initialMovement?.movementId;
+    const movementId =
+      parsed.payload instanceof RecursoInventarioCreadoPayload
+        ? parsed.payload.initialMovement?.movementId
+        : parsed.payload instanceof MovimientoInventarioRegistradoPayload
+          ? parsed.payload.movement.movementId
+          : null;
     const existingMovement = movementId
       ? await manager.findOneBy(InventoryMovementEntity, { movementId })
       : null;
+    const existingItem = await manager.findOneBy(InventoryItemEntity, {
+      id: event.aggregate_id,
+    });
     return this.saveConflict(
       manager,
       event,
-      payload,
+      parsed.payload,
       'El evento chocó con una restricción única del servidor.',
-      movementId ? 'inventory_movement' : 'inventory_item',
-      movementId ?? event.aggregate_id,
-      existingMovement?.eventId ?? null,
+      existingMovement ? 'inventory_movement' : 'inventory_item',
+      existingMovement?.movementId ?? event.aggregate_id,
+      existingMovement?.eventId ?? existingItem?.lastEventId ?? null,
+      existingMovement ? 'movement_id_conflict' : 'aggregate_id_conflict',
     );
+  }
+
+  private parsePayload(
+    event: PushEventDto,
+  ): { payload: InventoryPayload } | { error: string } {
+    try {
+      switch (event.event_type) {
+        case RecursoInventarioCreadoPayload.eventType:
+          return {
+            payload: RecursoInventarioCreadoPayload.fromJson(event.payload),
+          };
+        case RecursoInventarioActualizadoPayload.eventType:
+          return {
+            payload: RecursoInventarioActualizadoPayload.fromJson(
+              event.payload,
+            ),
+          };
+        case MovimientoInventarioRegistradoPayload.eventType:
+          return {
+            payload: MovimientoInventarioRegistradoPayload.fromJson(
+              event.payload,
+            ),
+          };
+        default:
+          return {
+            error: `Evento de inventario no soportado: ${event.event_type}`,
+          };
+      }
+    } catch (error) {
+      return { error: this.errorMessage(error) };
+    }
   }
 
   private validateIdentity(event: PushEventDto): string | null {
@@ -234,7 +477,7 @@ export class InventoryEventHandler {
     return null;
   }
 
-  private validateEnvelope(
+  private validateCreationEnvelope(
     event: PushEventDto,
     payload: RecursoInventarioCreadoPayload,
   ): string | null {
@@ -256,6 +499,49 @@ export class InventoryEventHandler {
     return null;
   }
 
+  private validateMutableEnvelope(event: PushEventDto): string | null {
+    if (event.aggregate_type !== RecursoInventarioCreadoPayload.aggregateType) {
+      return `${event.event_type} debe usar aggregate_type inventory_item.`;
+    }
+    if (
+      !Number.isSafeInteger(event.base_version) ||
+      Number(event.base_version) < 1
+    ) {
+      return `${event.event_type} requiere base_version entero >= 1.`;
+    }
+    const baseSequence = this.toNullableNumber(event.base_server_sequence);
+    if (
+      event.base_server_sequence !== null &&
+      event.base_server_sequence !== undefined &&
+      (baseSequence === null || baseSequence < 0)
+    ) {
+      return 'base_server_sequence debe ser un entero >= 0 o null.';
+    }
+    return null;
+  }
+
+  private validateBase(
+    event: PushEventDto,
+    baseEventId: string,
+    item: InventoryItemEntity,
+  ): string | null {
+    if (event.base_version !== item.version) {
+      return 'La versión base no coincide con el recurso actual.';
+    }
+    if (baseEventId !== (item.lastEventId ?? item.createdEventId)) {
+      return 'base_event_id no coincide con el recurso actual.';
+    }
+    const baseSequence = this.toNullableNumber(event.base_server_sequence);
+    if (
+      baseSequence !== null &&
+      (item.lastServerSequence === null ||
+        baseSequence !== Number(item.lastServerSequence))
+    ) {
+      return 'base_server_sequence no coincide con el recurso actual.';
+    }
+    return null;
+  }
+
   private validateUnit(unit: UnitEntity | null): string | null {
     if (!unit) return 'La unidad predeterminada no existe.';
     if (!unit.active) return 'La unidad predeterminada está inactiva.';
@@ -271,6 +557,16 @@ export class InventoryEventHandler {
       return 'La configuración de la unidad predeterminada es inválida.';
     }
     return null;
+  }
+
+  private safeAdd(
+    current: string,
+    delta: number,
+  ): { value: string } | { error: true } {
+    const result = BigInt(current) + BigInt(delta);
+    const max = BigInt(MAX_SAFE_ATOMIC_QUANTITY);
+    if (result > max || result < -max) return { error: true };
+    return { value: result.toString() };
   }
 
   private async saveRejectedEvent(
@@ -290,12 +586,12 @@ export class InventoryEventHandler {
   private async saveConflict(
     manager: EntityManager,
     event: PushEventDto,
-    payload: RecursoInventarioCreadoPayload,
+    payload: InventoryPayload,
     reason: string,
     refType: string,
     refId: string,
     defaultWinnerEventId: string | null,
-    conflictType = 'aggregate_id_conflict',
+    conflictType: string,
   ): Promise<PushEventResultDto> {
     const canonicalEvent = { ...event, payload: payload.toJson() };
     const saved = await this.saveEvent(
@@ -353,7 +649,7 @@ export class InventoryEventHandler {
   private async saveEventRefs(
     manager: EntityManager,
     event: PushEventDto,
-    payload: RecursoInventarioCreadoPayload,
+    payload: InventoryPayload,
     serverSequence: string,
   ): Promise<void> {
     const refs = [
@@ -362,21 +658,27 @@ export class InventoryEventHandler {
         refId: event.aggregate_id,
         relationship: 'affects',
       },
-      {
+    ];
+    if (payload instanceof RecursoInventarioCreadoPayload) {
+      refs.push({
         refType: 'unit',
         refId: payload.defaultUnitId,
         relationship: 'uses',
-      },
-      ...(payload.initialMovement
-        ? [
-            {
-              refType: 'inventory_movement',
-              refId: payload.initialMovement.movementId,
-              relationship: 'affects',
-            },
-          ]
-        : []),
-    ];
+      });
+      if (payload.initialMovement) {
+        refs.push({
+          refType: 'inventory_movement',
+          refId: payload.initialMovement.movementId,
+          relationship: 'affects',
+        });
+      }
+    } else if (payload instanceof MovimientoInventarioRegistradoPayload) {
+      refs.push({
+        refType: 'inventory_movement',
+        refId: payload.movement.movementId,
+        relationship: 'affects',
+      });
+    }
     await manager.save(
       refs.map((ref) =>
         manager.create(EventRefEntity, {
@@ -426,6 +728,14 @@ export class InventoryEventHandler {
         value,
       )
     );
+  }
+
+  private toNullableNumber(
+    value: string | number | null | undefined,
+  ): number | null {
+    if (value === null || value === undefined) return null;
+    const parsed = typeof value === 'number' ? value : Number(value);
+    return Number.isSafeInteger(parsed) ? parsed : null;
   }
 
   private errorMessage(error: unknown): string {

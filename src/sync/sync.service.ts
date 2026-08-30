@@ -45,6 +45,8 @@ import { InventoryEventHandler } from './inventory-event.handler';
 import { CategoriaEliminadaPayload } from './payloads/categoria-eliminada.payload';
 import { SyncConflictService } from './sync-conflict.service';
 import { RecursoInventarioCreadoPayload } from './payloads/recurso-inventario-creado.payload';
+import { RecursoInventarioActualizadoPayload } from './payloads/recurso-inventario-actualizado.payload';
+import { MovimientoInventarioRegistradoPayload } from './payloads/movimiento-inventario-registrado.payload';
 
 interface EspacioCreadoPayload {
   nombre: string;
@@ -469,7 +471,9 @@ export class SyncService {
       event.event_type !== 'categoria_movida' &&
       event.event_type !== CategoriaEliminadaPayload.eventType &&
       event.event_type !== 'producto_creado' &&
-      event.event_type !== RecursoInventarioCreadoPayload.eventType
+      event.event_type !== RecursoInventarioCreadoPayload.eventType &&
+      event.event_type !== RecursoInventarioActualizadoPayload.eventType &&
+      event.event_type !== MovimientoInventarioRegistradoPayload.eventType
     ) {
       return this.rejectedReportResult(
         event.event_id,

@@ -15,6 +15,26 @@ import { InventoryItemEntity } from './inventory-item.entity';
   'createdAtLocal',
 ])
 @Check('ck_inventory_movements_non_zero', '"quantity_delta_atomic" <> 0')
+@Check(
+  'ck_inventory_movements_reason_shape',
+  '"reason" IS NULL OR ("reason" = btrim("reason") AND char_length("reason") BETWEEN 1 AND 500)',
+)
+@Check(
+  'ck_inventory_movements_manual_reason',
+  '"movement_type" <> \'manual_adjustment\' OR "reason" IS NOT NULL',
+)
+@Check(
+  'ck_inventory_movements_positive_entries',
+  '"movement_type" NOT IN (\'initial_balance\', \'stock_receipt\') OR "quantity_delta_atomic" > 0',
+)
+@Check(
+  'ck_inventory_movements_reversal_reference',
+  '("movement_type" = \'reversal\') = ("reversal_of_movement_id" IS NOT NULL)',
+)
+@Check(
+  'ck_inventory_movements_no_self_reversal',
+  '"reversal_of_movement_id" IS NULL OR "reversal_of_movement_id" <> "movement_id"',
+)
 export class InventoryMovementEntity {
   @PrimaryColumn('uuid', { name: 'movement_id' })
   movementId: string;
@@ -54,8 +74,8 @@ export class InventoryMovementEntity {
   @Column({ name: 'total_cost_minor', type: 'bigint', nullable: true })
   totalCostMinor: string | null;
 
-  @Column({ type: 'varchar', length: 500 })
-  reason: string;
+  @Column({ type: 'varchar', length: 500, nullable: true })
+  reason: string | null;
 
   @Column({ name: 'created_at_local', type: 'timestamptz', precision: 3 })
   createdAtLocal: Date;
