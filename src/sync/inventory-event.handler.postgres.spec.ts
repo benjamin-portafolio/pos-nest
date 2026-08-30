@@ -152,6 +152,119 @@ runPostgresIntegration('InventoryEventHandler con PostgreSQL real', () => {
     expect(notifyEventsAvailable).toHaveBeenCalledTimes(1);
   });
 
+  it('sincroniza ajustes de existencia y los publica para los demás dispositivos', async () => {
+    const notifyEventsAvailable = jest.fn();
+    const service = new SyncService(
+      database,
+      { notifyEventsAvailable } as unknown as EventsGateway,
+      {} as SyncConflictService,
+      undefined,
+      undefined,
+      handler,
+    );
+    const creation = inventoryEvent({ delta: 375 });
+    const creationPush = await service.pushEvents({
+      device_id: creation.device_id,
+      events: [creation],
+    });
+    const adjustment = inventoryAdjustmentEvent({ delta: -75 });
+
+    const firstAdjustmentPush = await service.pushEvents({
+      device_id: adjustment.device_id,
+      events: [adjustment],
+    });
+    const duplicateAdjustmentPush = await service.pushEvents({
+      device_id: adjustment.device_id,
+      events: [adjustment],
+    });
+    const creationServerSequence = creationPush.results[0]?.server_sequence;
+    if (
+      creationServerSequence === null ||
+      creationServerSequence === undefined
+    ) {
+      throw new Error('La creación no recibió server_sequence.');
+    }
+    const pullForSecondDevice = await service.pullEvents({
+      since: creationServerSequence,
+    });
+
+    expect(firstAdjustmentPush.results[0]?.status).toBe('accepted');
+    expect(duplicateAdjustmentPush.results[0]?.status).toBe('duplicate');
+    expect(pullForSecondDevice.events).toEqual([
+      expect.objectContaining({
+        event_id: adjustment.event_id,
+        event_type: 'existencia_inventario_ajustada',
+        payload: adjustment.payload,
+        sync_status: 'synced',
+      }),
+    ]);
+    const item = await database.manager.findOneByOrFail(InventoryItemEntity, {
+      id: creation.aggregate_id,
+    });
+    const balance = await database.manager.findOneByOrFail(
+      InventoryBalanceEntity,
+      { inventoryItemId: creation.aggregate_id },
+    );
+    expect(item.version).toBe(2);
+    expect(balance.quantityOnHandAtomic).toBe('300');
+    expect(balance.quantityAvailableAtomic).toBe('300');
+    expect(await database.manager.count(InventoryMovementEntity)).toBe(2);
+    expect(notifyEventsAvailable).toHaveBeenCalledTimes(2);
+  });
+
+  it('combina ajustes aditivos creados desde la misma base en dos dispositivos', async () => {
+    const service = new SyncService(
+      database,
+      { notifyEventsAvailable: jest.fn() } as unknown as EventsGateway,
+      {} as SyncConflictService,
+      undefined,
+      undefined,
+      handler,
+    );
+    const creation = inventoryEvent({ delta: 100 });
+    await service.pushEvents({
+      device_id: creation.device_id,
+      events: [creation],
+    });
+    const first = inventoryAdjustmentEvent({
+      delta: 25,
+      deviceId: 'postgres-inventory-device-a',
+      eventId: '40000000-0000-4000-8000-000000000010',
+      movementId: '30000000-0000-4000-8000-000000000010',
+      localSequence: 1,
+    });
+    const second = inventoryAdjustmentEvent({
+      delta: -10,
+      deviceId: 'postgres-inventory-device-b',
+      eventId: '40000000-0000-4000-8000-000000000020',
+      movementId: '30000000-0000-4000-8000-000000000020',
+      localSequence: 1,
+    });
+
+    const firstPush = await service.pushEvents({
+      device_id: first.device_id,
+      events: [first],
+    });
+    const secondPush = await service.pushEvents({
+      device_id: second.device_id,
+      events: [second],
+    });
+
+    expect(firstPush.results[0]?.status).toBe('accepted');
+    expect(secondPush.results[0]?.status).toBe('accepted');
+    const item = await database.manager.findOneByOrFail(InventoryItemEntity, {
+      id: creation.aggregate_id,
+    });
+    const balance = await database.manager.findOneByOrFail(
+      InventoryBalanceEntity,
+      { inventoryItemId: creation.aggregate_id },
+    );
+    expect(item.version).toBe(3);
+    expect(balance.quantityOnHandAtomic).toBe('115');
+    expect(balance.quantityAvailableAtomic).toBe('115');
+    expect(await database.manager.count(InventoryMovementEntity)).toBe(3);
+  });
+
   it('convierte un movement_id duplicado en conflicto funcional', async () => {
     const first = inventoryEvent({ delta: 250 });
     await database.transaction((manager) => handler.apply(manager, first));
@@ -253,6 +366,46 @@ function inventoryEvent({
               quantity_delta_atomic: delta,
               reason: 'Existencia inicial',
             },
+    },
+  };
+}
+
+function inventoryAdjustmentEvent({
+  delta,
+  eventId = '40000000-0000-4000-8000-000000000002',
+  itemId = '20000000-0000-4000-8000-000000000001',
+  movementId = '30000000-0000-4000-8000-000000000002',
+  deviceId = 'postgres-inventory-device',
+  localSequence = 2,
+  baseVersion = 1,
+}: {
+  delta: number;
+  eventId?: string;
+  itemId?: string;
+  movementId?: string;
+  deviceId?: string;
+  localSequence?: number;
+  baseVersion?: number;
+}): PushEventDto {
+  return {
+    event_id: eventId,
+    aggregate_type: 'inventory_item',
+    aggregate_id: itemId,
+    event_type: 'existencia_inventario_ajustada',
+    device_id: deviceId,
+    user_id: 'postgres-inventory-user',
+    local_sequence: localSequence,
+    base_server_sequence: null,
+    base_version: baseVersion,
+    created_at_local: '2026-08-19T11:05:00.000Z',
+    payload: {
+      inventory_item_id: itemId,
+      movement: {
+        movement_id: movementId,
+        movement_type: 'manual_adjustment',
+        quantity_delta_atomic: delta,
+        reason: 'Ajuste de prueba',
+      },
     },
   };
 }
