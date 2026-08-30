@@ -43,7 +43,6 @@ import { CategoriaEventHandler } from './categoria-event.handler';
 import { ProductoEventHandler } from './producto-event.handler';
 import { InventoryEventHandler } from './inventory-event.handler';
 import { CategoriaEliminadaPayload } from './payloads/categoria-eliminada.payload';
-import { ExistenciaInventarioAjustadaPayload } from './payloads/existencia-inventario-ajustada.payload';
 import { SyncConflictService } from './sync-conflict.service';
 import { RecursoInventarioCreadoPayload } from './payloads/recurso-inventario-creado.payload';
 
@@ -470,8 +469,7 @@ export class SyncService {
       event.event_type !== 'categoria_movida' &&
       event.event_type !== CategoriaEliminadaPayload.eventType &&
       event.event_type !== 'producto_creado' &&
-      event.event_type !== RecursoInventarioCreadoPayload.eventType &&
-      event.event_type !== ExistenciaInventarioAjustadaPayload.eventType
+      event.event_type !== RecursoInventarioCreadoPayload.eventType
     ) {
       return this.rejectedReportResult(
         event.event_id,
@@ -909,8 +907,7 @@ export class SyncService {
       return 'producto_creado debe usar aggregate_type product.';
     }
     if (
-      (event.event_type === RecursoInventarioCreadoPayload.eventType ||
-        event.event_type === ExistenciaInventarioAjustadaPayload.eventType) &&
+      event.event_type === RecursoInventarioCreadoPayload.eventType &&
       event.aggregate_type !== RecursoInventarioCreadoPayload.aggregateType
     ) {
       return `${event.event_type} debe usar aggregate_type inventory_item.`;
