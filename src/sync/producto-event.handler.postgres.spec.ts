@@ -72,7 +72,7 @@ runPostgresIntegration('ProductoEventHandler con PostgreSQL real', () => {
     `);
   });
 
-  it('inserta todas las variantes y refs atómica e idempotentemente', async () => {
+  it('persiste el orden de variantes y refs atómica e idempotentemente', async () => {
     const event = productEvent();
     const first = await database.transaction((manager) =>
       handler.apply(manager, event),
@@ -85,6 +85,28 @@ runPostgresIntegration('ProductoEventHandler con PostgreSQL real', () => {
     expect(second.status).toBe('accepted');
     expect(await database.manager.count(ProductEntity)).toBe(1);
     expect(await database.manager.count(ProductVariantEntity)).toBe(2);
+    const variants = await database.manager.find(ProductVariantEntity, {
+      where: { productId: event.aggregate_id },
+      order: { sortOrder: 'ASC' },
+    });
+    expect(
+      variants.map((variant) => ({
+        id: variant.id,
+        isDefault: variant.isDefault,
+        sortOrder: variant.sortOrder,
+      })),
+    ).toEqual([
+      {
+        id: '00000000-0000-4000-8000-000000000003',
+        isDefault: true,
+        sortOrder: 0,
+      },
+      {
+        id: '00000000-0000-4000-8000-000000000004',
+        isDefault: false,
+        sortOrder: 1,
+      },
+    ]);
     expect(await database.manager.count(EventEntity)).toBe(1);
     expect(await database.manager.count(EventRefEntity)).toBe(4);
   });
