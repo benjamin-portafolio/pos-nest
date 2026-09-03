@@ -23,6 +23,7 @@ import { InventoryItemEntity } from './entities/inventory-item.entity';
 import { InventoryBalanceEntity } from './entities/inventory-balance.entity';
 import { InventoryMovementEntity } from './entities/inventory-movement.entity';
 import { InventoryUnitSeedService } from './inventory/inventory-unit-seed.service';
+import { RecipeComponentEntity } from './entities/recipe-component.entity';
 
 @Module({
   imports: [
@@ -50,6 +51,7 @@ import { InventoryUnitSeedService } from './inventory/inventory-unit-seed.servic
           InventoryItemEntity,
           InventoryBalanceEntity,
           InventoryMovementEntity,
+          RecipeComponentEntity,
         ],
         autoLoadEntities: true,
       }),

@@ -10,6 +10,7 @@ const _productId = '00000000-0000-4000-8000-000000000010';
 const _variant1 = '00000000-0000-4000-8000-000000000001';
 const _variant2 = '00000000-0000-4000-8000-000000000002';
 const _inventoryItem = '00000000-0000-4000-8000-000000000020';
+const _inventoryItem2 = '00000000-0000-4000-8000-000000000022';
 const _inventoryEvent = '00000000-0000-4000-8000-000000000021';
 
 describe('ProductoCreadoPayload', () => {
@@ -103,6 +104,80 @@ describe('ProductoCreadoPayload', () => {
     ];
     expect(() => ProductoCreadoPayload.fromJson(duplicate)).toThrow(
       'no pueden repetirse',
+    );
+  });
+
+  it('parsea y serializa canónicamente una receta por variante', () => {
+    const parsed = ProductoCreadoPayload.fromJson(recipeProductPayload());
+
+    expect(parsed.variants[0].inventoryItemId).toBeNull();
+    expect(parsed.variants[0].recipeComponents).toEqual([
+      { inventoryItemId: _inventoryItem, quantityAtomic: 250 },
+      { inventoryItemId: _inventoryItem2, quantityAtomic: 2 },
+    ]);
+    expect(parsed.toJson()).toEqual(
+      expect.objectContaining({
+        variants: [
+          expect.objectContaining({
+            inventory_configuration: {
+              enabled: true,
+              components: [
+                {
+                  inventory_item_id: _inventoryItem,
+                  quantity_atomic: 250,
+                },
+                {
+                  inventory_item_id: _inventoryItem2,
+                  quantity_atomic: 2,
+                },
+              ],
+            },
+          }),
+        ],
+      }),
+    );
+  });
+
+  it('rechaza receta vacía, cantidades inválidas y componentes repetidos', () => {
+    const empty = recipeProductPayload();
+    const emptyConfiguration = (
+      empty.variants as Array<Record<string, unknown>>
+    )[0].inventory_configuration as Record<string, unknown>;
+    emptyConfiguration.components = [];
+    expect(() => ProductoCreadoPayload.fromJson(empty)).toThrow(
+      'requiere componentes',
+    );
+
+    const invalidQuantity = recipeProductPayload();
+    const invalidComponents = recipeComponents(invalidQuantity);
+    invalidComponents[0].quantity_atomic = 0;
+    expect(() => ProductoCreadoPayload.fromJson(invalidQuantity)).toThrow(
+      'quantity_atomic',
+    );
+
+    const duplicate = recipeProductPayload();
+    const duplicateComponents = recipeComponents(duplicate);
+    duplicateComponents[1].inventory_item_id = _inventoryItem2;
+    expect(() => ProductoCreadoPayload.fromJson(duplicate)).toThrow(
+      'no puede repetirse',
+    );
+  });
+
+  it('rechaza receta junto con vínculo directo o sin dependencias exactas', () => {
+    const directAndRecipe = recipeProductPayload();
+    (
+      directAndRecipe.variants as Array<Record<string, unknown>>
+    )[0].inventory_item_id = _inventoryItem;
+    expect(() => ProductoCreadoPayload.fromJson(directAndRecipe)).toThrow(
+      'simultáneamente',
+    );
+
+    const missingDependency = recipeProductPayload();
+    missingDependency.dependencies = [
+      { ref_type: 'inventory_item', ref_id: _inventoryItem },
+    ];
+    expect(() => ProductoCreadoPayload.fromJson(missingDependency)).toThrow(
+      'componentes de receta',
     );
   });
 
@@ -223,6 +298,35 @@ function advancedProductPayload(): Record<string, unknown> {
     },
   ];
   return payload;
+}
+
+function recipeProductPayload(): Record<string, unknown> {
+  const payload = productPayload();
+  (
+    payload.variants as Array<Record<string, unknown>>
+  )[0].inventory_configuration = {
+    enabled: true,
+    components: [
+      { inventory_item_id: _inventoryItem2, quantity_atomic: 2 },
+      { inventory_item_id: _inventoryItem, quantity_atomic: 250 },
+    ],
+  };
+  payload.dependencies = [
+    { ref_type: 'inventory_item', ref_id: _inventoryItem2 },
+    { ref_type: 'inventory_item', ref_id: _inventoryItem },
+  ];
+  return payload;
+}
+
+function recipeComponents(
+  payload: Record<string, unknown>,
+): Array<Record<string, unknown>> {
+  const variant = (payload.variants as Array<Record<string, unknown>>)[0];
+  const configuration = variant.inventory_configuration as Record<
+    string,
+    unknown
+  >;
+  return configuration.components as Array<Record<string, unknown>>;
 }
 
 function duplicateIdPayload(): Record<string, unknown> {

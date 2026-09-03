@@ -7,6 +7,7 @@ import { EventRefEntity } from '../entities/event-ref.entity';
 import { InventoryItemEntity } from '../entities/inventory-item.entity';
 import { ProductVariantEntity } from '../entities/product-variant.entity';
 import { ProductEntity } from '../entities/product.entity';
+import { RecipeComponentEntity } from '../entities/recipe-component.entity';
 import { UnitEntity } from '../entities/unit.entity';
 import { EventSyncStatus } from '../enums/event-sync-status.enum';
 import { SaleMode } from '../enums/sale-mode.enum';
@@ -180,10 +181,9 @@ export class ProductoEventHandler {
       }
     }
 
-    const resourceIds = new Set<string>();
-    for (const variant of payload.variants) {
-      if (variant.inventoryItemId) resourceIds.add(variant.inventoryItemId);
-    }
+    const resourceIds = new Set(
+      payload.inventoryDependencies.map((dependency) => dependency.refId),
+    );
     const inventoryItems = new Map<string, InventoryItemEntity>();
     for (const inventoryItemId of [...resourceIds].sort()) {
       const item = await manager.findOne(InventoryItemEntity, {
@@ -321,6 +321,18 @@ export class ProductoEventHandler {
           }),
         ),
       );
+      const recipeComponents = payload.variants.flatMap((variant) =>
+        variant.recipeComponents.map((component) =>
+          manager.create(RecipeComponentEntity, {
+            variantId: variant.id,
+            inventoryItemId: component.inventoryItemId,
+            quantityAtomic: String(component.quantityAtomic),
+          }),
+        ),
+      );
+      if (recipeComponents.length !== 0) {
+        await manager.save(recipeComponents);
+      }
     }
 
     return this.toResult(savedEvent, 'accepted');
@@ -692,6 +704,15 @@ export class ProductoEventHandler {
                   variant.nameKey,
                 ),
                 relationship: 'requires_unique',
+              },
+            ]),
+        ...(variant.recipeComponents.length === 0
+          ? []
+          : [
+              {
+                refType: 'recipe',
+                refId: variant.id,
+                relationship: 'affects',
               },
             ]),
       ]),

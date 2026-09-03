@@ -5,6 +5,7 @@ import { EventRefEntity } from '../entities/event-ref.entity';
 import { InventoryItemEntity } from '../entities/inventory-item.entity';
 import { ProductVariantEntity } from '../entities/product-variant.entity';
 import { ProductEntity } from '../entities/product.entity';
+import { RecipeComponentEntity } from '../entities/recipe-component.entity';
 import { UnitEntity } from '../entities/unit.entity';
 import type { PushEventDto } from './dto/push-events.dto';
 import { EventSyncStatus } from '../enums/event-sync-status.enum';
@@ -146,6 +147,91 @@ describe('ProductoEventHandler', () => {
       ref_type: 'inventory_item',
       ref_id: item.id,
     });
+  });
+
+  it('guarda la receta, su referencia y el payload canónico', async () => {
+    const item = inventoryItem({
+      defaultUnitId: '00000000-0000-4000-8000-000000000020',
+    });
+    const fixture = managerFixture({
+      inventoryItem: item,
+      unit: kilogramUnit(),
+      baseEvent: inventoryCreationEvent(),
+    });
+    const handler = new ProductoEventHandler(
+      {} as unknown as SyncConflictService,
+    );
+
+    const result = await handler.apply(
+      fixture.manager,
+      productEvent({ payload: recipeProductPayload() }),
+    );
+
+    expect(result.status).toBe('accepted');
+    expect(
+      fixture.created.find((entry) => entry.target === RecipeComponentEntity)
+        ?.value,
+    ).toEqual({
+      variantId: '00000000-0000-4000-8000-000000000003',
+      inventoryItemId: item.id,
+      quantityAtomic: '250',
+    });
+    expect(
+      fixture.created.find(
+        (entry) =>
+          entry.target === EventRefEntity &&
+          entry.value['refType'] === 'recipe',
+      )?.value,
+    ).toEqual(
+      expect.objectContaining({
+        refId: '00000000-0000-4000-8000-000000000003',
+        relationship: 'affects',
+      }),
+    );
+    const savedEvent = fixture.created.find(
+      (entry) => entry.target === EventEntity,
+    )?.value;
+    const savedPayload = savedEvent?.['payload'] as Record<string, unknown>;
+    const savedVariant = (
+      savedPayload['variants'] as Array<Record<string, unknown>>
+    )[0];
+    expect(savedVariant['inventory_configuration']).toEqual({
+      enabled: true,
+      components: [{ inventory_item_id: item.id, quantity_atomic: 250 }],
+    });
+    expect(savedPayload['dependencies']).toEqual([
+      { ref_type: 'inventory_item', ref_id: item.id },
+    ]);
+  });
+
+  it('no crea la receta cuando un ingrediente está inactivo', async () => {
+    const fixture = managerFixture({
+      inventoryItem: inventoryItem({ active: false }),
+      unit: pieceUnit(),
+    });
+    const recordConflict = jest.fn().mockResolvedValue({
+      conflictId: '00000000-0000-4000-8000-000000000099',
+    });
+    const handler = new ProductoEventHandler({
+      recordConflict,
+    } as unknown as SyncConflictService);
+
+    const result = await handler.apply(
+      fixture.manager,
+      productEvent({ payload: recipeProductPayload() }),
+    );
+
+    expect(result.status).toBe('conflict');
+    expect(recordConflict).toHaveBeenCalledWith(
+      fixture.manager,
+      expect.objectContaining({
+        conflictType: 'missing_dependency',
+        refType: 'inventory_item',
+      }),
+    );
+    expect(
+      fixture.created.some((entry) => entry.target === RecipeComponentEntity),
+    ).toBe(false);
   });
 
   it('rechaza seguimiento por unidad cuando el recurso no usa piezas', async () => {
@@ -578,6 +664,29 @@ function trackedProductPayload(): Record<string, unknown> {
   return payload;
 }
 
+function recipeProductPayload(): Record<string, unknown> {
+  const payload = productPayload(null, null);
+  (
+    payload.variants as Array<Record<string, unknown>>
+  )[0].inventory_configuration = {
+    enabled: true,
+    components: [
+      {
+        inventory_item_id: '00000000-0000-4000-8000-000000000030',
+        quantity_atomic: 250,
+      },
+    ],
+  };
+  payload.dependencies = [
+    {
+      ref_type: 'inventory_item',
+      ref_id: '00000000-0000-4000-8000-000000000030',
+      depends_on_event_id: '00000000-0000-4000-8000-000000000031',
+    },
+  ];
+  return payload;
+}
+
 function advancedProductPayload(): Record<string, unknown> {
   const payload = productPayload(null, null);
   payload.variants = [
@@ -655,7 +764,9 @@ function pieceUnit(): UnitEntity {
   });
 }
 
-function inventoryItem(): InventoryItemEntity {
+function inventoryItem(
+  overrides: Partial<InventoryItemEntity> = {},
+): InventoryItemEntity {
   return Object.assign(new InventoryItemEntity(), {
     id: '00000000-0000-4000-8000-000000000030',
     defaultUnitId: '00000000-0000-4000-8000-000000000040',
@@ -664,6 +775,7 @@ function inventoryItem(): InventoryItemEntity {
     createdEventId: '00000000-0000-4000-8000-000000000031',
     lastEventId: '00000000-0000-4000-8000-000000000031',
     lastServerSequence: '10',
+    ...overrides,
   });
 }
 

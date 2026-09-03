@@ -17,8 +17,14 @@ export interface ProductoCreadoVariantValue {
   salePriceMinor: number;
   standardCostMinor: number | null;
   inventoryItemId: string | null;
+  recipeComponents: readonly ProductoCreadoRecipeComponentValue[];
   isDefault: boolean;
   sortOrder: number;
+}
+
+export interface ProductoCreadoRecipeComponentValue {
+  inventoryItemId: string;
+  quantityAtomic: number;
 }
 
 export interface ProductoCreadoInventoryDependencyValue {
@@ -180,6 +186,17 @@ export class ProductoCreadoPayload {
         ...(variant.inventoryItemId === null
           ? {}
           : { inventory_item_id: variant.inventoryItemId }),
+        ...(variant.recipeComponents.length === 0
+          ? {}
+          : {
+              inventory_configuration: {
+                enabled: true,
+                components: variant.recipeComponents.map((component) => ({
+                  inventory_item_id: component.inventoryItemId,
+                  quantity_atomic: component.quantityAtomic,
+                })),
+              },
+            }),
         is_default: variant.isDefault,
         sort_order: variant.sortOrder,
       })),
@@ -236,6 +253,15 @@ function parseVariant(
     variant.inventory_item_id,
     `${fieldName}.inventory_item_id`,
   );
+  const recipeComponents = parseRecipeComponents(
+    variant.inventory_configuration,
+    `${fieldName}.inventory_configuration`,
+  );
+  if (inventoryItemId !== null && recipeComponents.length !== 0) {
+    throw new Error(
+      `${fieldName} no puede usar vínculo directo y receta simultáneamente.`,
+    );
+  }
   return {
     id: requiredId(variant.variant_id, `${fieldName}.variant_id`),
     name: normalizedName.name,
@@ -254,6 +280,7 @@ function parseVariant(
         )
       : null,
     inventoryItemId,
+    recipeComponents,
     isDefault: variant.is_default,
     sortOrder: nonNegativeSafeInteger(
       variant.sort_order,
@@ -336,6 +363,9 @@ function validateInventoryDependencies(
     if (variant.inventoryItemId !== null) {
       trackedItemIds.add(variant.inventoryItemId);
     }
+    for (const component of variant.recipeComponents) {
+      trackedItemIds.add(component.inventoryItemId);
+    }
   }
   const dependencyIds = new Set<string>();
   for (const dependency of dependencies) {
@@ -351,9 +381,66 @@ function validateInventoryDependencies(
     [...trackedItemIds].some((id) => !dependencyIds.has(id))
   ) {
     throw new Error(
-      'Las dependencias inventory_item deben coincidir con los recursos vinculados a variantes.',
+      'Las dependencias inventory_item deben coincidir con los recursos directos y componentes de receta.',
     );
   }
+}
+
+function parseRecipeComponents(
+  value: unknown,
+  fieldName: string,
+): readonly ProductoCreadoRecipeComponentValue[] {
+  if (value === null || value === undefined) return [];
+  const configuration = requiredRecord(value, fieldName);
+  if (typeof configuration.enabled !== 'boolean') {
+    throw new Error(`${fieldName}.enabled debe ser booleano.`);
+  }
+  if (!configuration.enabled) {
+    if (
+      configuration.components !== null &&
+      configuration.components !== undefined
+    ) {
+      throw new Error(
+        `${fieldName} deshabilitada no puede declarar componentes.`,
+      );
+    }
+    return [];
+  }
+  if (
+    !Array.isArray(configuration.components) ||
+    configuration.components.length === 0
+  ) {
+    throw new Error(
+      `${fieldName} habilitada como receta requiere componentes.`,
+    );
+  }
+
+  const ids = new Set<string>();
+  const components = configuration.components.map((value, index) => {
+    const componentField = `${fieldName}.components[${index}]`;
+    const component = requiredRecord(value, componentField);
+    const inventoryItemId = requiredId(
+      component.inventory_item_id,
+      `${componentField}.inventory_item_id`,
+    );
+    if (ids.has(inventoryItemId)) {
+      throw new Error(
+        'Un recurso de inventario no puede repetirse en la misma receta.',
+      );
+    }
+    ids.add(inventoryItemId);
+    return {
+      inventoryItemId,
+      quantityAtomic: positiveSafeInteger(
+        component.quantity_atomic,
+        `${componentField}.quantity_atomic`,
+      ),
+    };
+  });
+  components.sort((left, right) =>
+    left.inventoryItemId.localeCompare(right.inventoryItemId),
+  );
+  return components;
 }
 
 function parseSaleConfiguration(

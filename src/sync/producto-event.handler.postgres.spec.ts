@@ -2,8 +2,10 @@ import { DataSource } from 'typeorm';
 import { CategoryEntity } from '../entities/category.entity';
 import { EventEntity } from '../entities/event.entity';
 import { EventRefEntity } from '../entities/event-ref.entity';
+import { InventoryItemEntity } from '../entities/inventory-item.entity';
 import { ProductVariantEntity } from '../entities/product-variant.entity';
 import { ProductEntity } from '../entities/product.entity';
+import { RecipeComponentEntity } from '../entities/recipe-component.entity';
 import { UnitEntity } from '../entities/unit.entity';
 import { SaleMode } from '../enums/sale-mode.enum';
 import type { PushEventDto } from './dto/push-events.dto';
@@ -38,8 +40,10 @@ runPostgresIntegration('ProductoEventHandler con PostgreSQL real', () => {
         EventRefEntity,
         CategoryEntity,
         UnitEntity,
+        InventoryItemEntity,
         ProductEntity,
         ProductVariantEntity,
+        RecipeComponentEntity,
       ],
       synchronize: true,
     });
@@ -57,8 +61,11 @@ runPostgresIntegration('ProductoEventHandler con PostgreSQL real', () => {
   beforeEach(async () => {
     await database.query(`
       TRUNCATE TABLE
+        "${schema}"."recipe_components",
         "${schema}"."product_variants",
         "${schema}"."products",
+        "${schema}"."inventory_items",
+        "${schema}"."units",
         "${schema}"."event_refs",
         "${schema}"."events"
       RESTART IDENTITY CASCADE
@@ -128,6 +135,67 @@ runPostgresIntegration('ProductoEventHandler con PostgreSQL real', () => {
     ).toBeNull();
     expect(await database.manager.count(ProductVariantEntity)).toBe(1);
   });
+
+  it('persiste una receta y su referencia de inventario atómicamente', async () => {
+    await database.manager.save(
+      database.manager.create(UnitEntity, {
+        unitId: '00000000-0000-4000-8000-000000000020',
+        code: 'g',
+        name: 'Gramo',
+        symbol: 'g',
+        dimension: 'mass',
+        atomicFactor: '1',
+        maxFractionDigits: 0,
+        active: true,
+      }),
+    );
+    await database.manager.save(
+      database.manager.create(InventoryItemEntity, {
+        id: '00000000-0000-4000-8000-000000000030',
+        defaultUnitId: '00000000-0000-4000-8000-000000000020',
+        name: 'Café molido',
+        active: true,
+        version: 1,
+        createdEventId: '00000000-0000-4000-8000-000000000031',
+        lastEventId: '00000000-0000-4000-8000-000000000031',
+        lastServerSequence: null,
+      }),
+    );
+
+    const result = await database.transaction((manager) =>
+      handler.apply(manager, recipeProductEvent()),
+    );
+
+    expect(result.status).toBe('accepted');
+    expect(await database.manager.find(RecipeComponentEntity)).toEqual([
+      expect.objectContaining({
+        variantId: '00000000-0000-4000-8000-000000000003',
+        inventoryItemId: '00000000-0000-4000-8000-000000000030',
+        quantityAtomic: '18',
+      }),
+    ]);
+    expect(
+      await database.manager.countBy(EventRefEntity, {
+        refType: 'recipe',
+        refId: '00000000-0000-4000-8000-000000000003',
+      }),
+    ).toBe(1);
+    const saved = await database.manager.findOneByOrFail(EventEntity, {
+      eventId: '00000000-0000-4000-8000-000000000011',
+    });
+    expect(
+      (saved.payload.variants as Array<Record<string, unknown>>)[0]
+        .inventory_configuration,
+    ).toEqual({
+      enabled: true,
+      components: [
+        {
+          inventory_item_id: '00000000-0000-4000-8000-000000000030',
+          quantity_atomic: 18,
+        },
+      ],
+    });
+  });
 });
 
 function productEvent(): PushEventDto {
@@ -171,6 +239,47 @@ function productEvent(): PushEventDto {
         },
       ],
       dependencies: [],
+    },
+  };
+}
+
+function recipeProductEvent(): PushEventDto {
+  return {
+    ...productEvent(),
+    event_id: '00000000-0000-4000-8000-000000000011',
+    payload: {
+      product: {
+        name: 'Café preparado',
+        category_id: null,
+        sale_configuration: { mode: 'unit' },
+      },
+      variants: [
+        {
+          variant_id: '00000000-0000-4000-8000-000000000003',
+          name: null,
+          sku: null,
+          barcode: null,
+          sale_price_minor: 4500,
+          standard_cost_minor: 900,
+          inventory_configuration: {
+            enabled: true,
+            components: [
+              {
+                inventory_item_id: '00000000-0000-4000-8000-000000000030',
+                quantity_atomic: 18,
+              },
+            ],
+          },
+          is_default: true,
+          sort_order: 0,
+        },
+      ],
+      dependencies: [
+        {
+          ref_type: 'inventory_item',
+          ref_id: '00000000-0000-4000-8000-000000000030',
+        },
+      ],
     },
   };
 }
