@@ -471,6 +471,7 @@ export class SyncService {
       event.event_type !== 'categoria_movida' &&
       event.event_type !== CategoriaEliminadaPayload.eventType &&
       event.event_type !== 'producto_creado' &&
+      event.event_type !== 'producto_actualizado' &&
       event.event_type !== RecursoInventarioCreadoPayload.eventType &&
       event.event_type !== RecursoInventarioActualizadoPayload.eventType &&
       event.event_type !== MovimientoInventarioRegistradoPayload.eventType

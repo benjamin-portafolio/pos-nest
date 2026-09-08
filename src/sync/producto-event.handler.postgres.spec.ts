@@ -72,6 +72,116 @@ runPostgresIntegration('ProductoEventHandler con PostgreSQL real', () => {
     `);
   });
 
+  it('actualiza precios, costo, nombre y orden sin reemplazar identidades', async () => {
+    const creation = productEvent();
+    await database.transaction((manager) => handler.apply(manager, creation));
+    const before = creation.payload;
+    const after = structuredClone(before);
+    (after.product as Record<string, unknown>).name = 'Café editado';
+    const variants = after.variants as Array<Record<string, unknown>>;
+    variants.reverse();
+    variants.forEach((v, i) => {
+      v.sort_order = i;
+      v.is_default = i === 0;
+      v.name = i === 0 ? 'Grande' : 'Chico';
+      v.sale_price_minor = 2500;
+      v.standard_cost_minor = null;
+    });
+    variants.push({
+      variant_id: '00000000-0000-4000-8000-000000000080',
+      name: 'Nueva',
+      sale_price_minor: 2500,
+      standard_cost_minor: null,
+      is_default: false,
+      sort_order: 2,
+    });
+    const update = {
+      ...creation,
+      event_id: '00000000-0000-4000-8000-000000000050',
+      event_type: 'producto_actualizado',
+      local_sequence: 2,
+      payload: { base_event_id: creation.event_id, before, after },
+    };
+    const result = await database.transaction((manager) =>
+      handler.apply(manager, update),
+    );
+    expect(result.status).toBe('accepted');
+    expect(
+      (await database.transaction((manager) => handler.apply(manager, update)))
+        .status,
+    ).toBe('accepted');
+    const product = await database.manager.findOneByOrFail(ProductEntity, {
+      id: creation.aggregate_id,
+    });
+    expect(product.name).toBe('Café editado');
+    expect(product.version).toBe(2);
+    expect(product.createdEventId).toBe(creation.event_id);
+    const rows = await database.manager.find(ProductVariantEntity, {
+      order: { sortOrder: 'ASC' },
+    });
+    expect(rows.map((v) => v.id)).toEqual(variants.map((v) => v.variant_id));
+    expect(rows.map((v) => v.salePriceMinor)).toEqual(['2500', '2500', '2500']);
+    expect(
+      rows.every(
+        (v) =>
+          v.standardCostMinor === null &&
+          (v.createdEventId === creation.event_id ||
+            v.createdEventId === update.event_id),
+      ),
+    ).toBe(true);
+    const stale = await database.transaction((manager) =>
+      handler.apply(manager, {
+        ...update,
+        event_id: '00000000-0000-4000-8000-000000000051',
+        local_sequence: 3,
+      }),
+    );
+    expect(stale.status).toBe('conflict');
+    expect(
+      (
+        await database.manager.findOneByOrFail(ProductEntity, {
+          id: product.id,
+        })
+      ).version,
+    ).toBe(2);
+  });
+
+  it('rechaza forma de venta adulterada incluso cambiando ambos estados', async () => {
+    const creation = productEvent();
+    await database.transaction((manager) => handler.apply(manager, creation));
+    const changed = structuredClone(creation.payload);
+    (changed.product as Record<string, unknown>).sale_configuration = {
+      mode: 'measured',
+      sale_unit_id: '00000000-0000-4000-8000-000000000060',
+      price_reference_quantity_atomic: 1000,
+    };
+    changed.dependencies = [
+      { ref_type: 'unit', ref_id: '00000000-0000-4000-8000-000000000060' },
+    ];
+    const result = await database.transaction((manager) =>
+      handler.apply(manager, {
+        ...creation,
+        event_id: '00000000-0000-4000-8000-000000000052',
+        event_type: 'producto_actualizado',
+        local_sequence: 2,
+        payload: {
+          base_event_id: creation.event_id,
+          before: changed,
+          after: changed,
+        },
+      }),
+    );
+    expect(result.status).toBe('rejected');
+    expect(result.reason).toContain('forma de venta');
+    expect(
+      (
+        await database.manager.findOneByOrFail(ProductEntity, {
+          id: creation.aggregate_id,
+        })
+      ).saleMode,
+    ).toBe('unit');
+  });
+
   it('persiste el orden de variantes y refs atómica e idempotentemente', async () => {
     const event = productEvent();
     const first = await database.transaction((manager) =>
@@ -217,6 +327,59 @@ runPostgresIntegration('ProductoEventHandler con PostgreSQL real', () => {
         },
       ],
     });
+    const creation = recipeProductEvent();
+    const after = structuredClone(creation.payload);
+    const value = (after.variants as Array<Record<string, unknown>>)[0];
+    value.inventory_configuration = {
+      enabled: true,
+      components: [
+        {
+          inventory_item_id: '00000000-0000-4000-8000-000000000030',
+          quantity_atomic: 25,
+        },
+      ],
+    };
+    const update = {
+      ...creation,
+      event_id: '00000000-0000-4000-8000-000000000071',
+      event_type: 'producto_actualizado',
+      local_sequence: 2,
+      payload: {
+        base_event_id: creation.event_id,
+        before: creation.payload,
+        after,
+      },
+    };
+    expect(
+      (await database.transaction((manager) => handler.apply(manager, update)))
+        .status,
+    ).toBe('accepted');
+    expect(
+      (await database.manager.find(RecipeComponentEntity))[0].quantityAtomic,
+    ).toBe('25');
+    const cleared = structuredClone(after);
+    delete (cleared.variants as Array<Record<string, unknown>>)[0]
+      .inventory_configuration;
+    cleared.dependencies = [];
+    expect(
+      (
+        await database.transaction((manager) =>
+          handler.apply(manager, {
+            ...update,
+            event_id: '00000000-0000-4000-8000-000000000072',
+            local_sequence: 3,
+            base_version: 2,
+            payload: {
+              base_event_id: update.event_id,
+              before: after,
+              after: cleared,
+            },
+          }),
+        )
+      ).status,
+    ).toBe('accepted');
+    expect(await database.manager.count(RecipeComponentEntity)).toBe(0);
+    expect(await database.manager.count(InventoryItemEntity)).toBe(1);
   });
 });
 

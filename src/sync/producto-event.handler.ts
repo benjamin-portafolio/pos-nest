@@ -1,3 +1,4 @@
+import { ProductoActualizadoPayload } from './payloads/producto-actualizado.payload';
 import { randomUUID } from 'crypto';
 import { Injectable } from '@nestjs/common';
 import { EntityManager } from 'typeorm';
@@ -30,7 +31,10 @@ export class ProductoEventHandler {
   constructor(private readonly syncConflictService: SyncConflictService) {}
 
   supports(eventType: string): boolean {
-    return eventType === ProductoCreadoPayload.eventType;
+    return (
+      eventType === ProductoCreadoPayload.eventType ||
+      eventType === ProductoActualizadoPayload.eventType
+    );
   }
 
   async apply(
@@ -43,22 +47,150 @@ export class ProductoEventHandler {
     }
 
     let payload: ProductoCreadoPayload;
+    let update: ProductoActualizadoPayload | null = null;
     try {
-      payload = ProductoCreadoPayload.fromJson(event.payload);
+      if (event.event_type === ProductoActualizadoPayload.eventType)
+        update = ProductoActualizadoPayload.fromJson(event.payload);
+      payload = update?.after ?? ProductoCreadoPayload.fromJson(event.payload);
     } catch (error) {
       return this.saveRejectedEvent(manager, event, this.errorMessage(error));
     }
 
-    const envelopeError = this.validateCreationEnvelope(event);
+    const envelopeError = update
+      ? event.aggregate_type !== 'product' ||
+        !Number.isSafeInteger(event.base_version) ||
+        event.base_version! < 1
+        ? 'Base de actualización inválida.'
+        : null
+      : this.validateCreationEnvelope(event);
     if (envelopeError) {
       return this.saveRejectedEvent(manager, event, envelopeError);
+    }
+
+    if (update) {
+      const duplicate = await manager.findOneBy(EventEntity, {
+        eventId: event.event_id,
+      });
+      if (duplicate?.syncStatus === EventSyncStatus.SYNCED)
+        return this.toResult(duplicate, 'accepted');
     }
 
     const existingProduct = await manager.findOne(ProductEntity, {
       where: { id: event.aggregate_id },
       lock: { mode: 'pessimistic_write' },
     });
-    if (existingProduct && existingProduct.createdEventId !== event.event_id) {
+    if (update) {
+      if (
+        !existingProduct ||
+        !existingProduct.active ||
+        existingProduct.lastEventId !== update.baseEventId ||
+        existingProduct.version !== event.base_version
+      ) {
+        return this.saveConflict(
+          manager,
+          event,
+          payload,
+          'El artículo cambió desde la base de edición.',
+          'stale_product_version',
+          'product',
+          event.aggregate_id,
+          existingProduct?.lastEventId ?? null,
+        );
+      }
+      const sale = payload.saleConfiguration;
+      if (
+        existingProduct.saleMode !== sale.mode ||
+        existingProduct.saleUnitId !==
+          (sale.mode === SaleMode.MEASURED ? sale.saleUnitId : null) ||
+        existingProduct.priceReferenceQuantityAtomic !==
+          (sale.mode === SaleMode.MEASURED
+            ? String(sale.priceReferenceQuantityAtomic)
+            : null)
+      ) {
+        return this.saveRejectedEvent(
+          manager,
+          event,
+          'No se puede cambiar la forma de venta.',
+        );
+      }
+      const variants = await manager.find(ProductVariantEntity, {
+        where: { productId: existingProduct.id },
+      });
+      const oldValues = [] as Array<Record<string, unknown>>;
+      for (const variant of variants.sort(
+        (a, b) => a.sortOrder - b.sortOrder,
+      )) {
+        const recipe = await manager.find(RecipeComponentEntity, {
+          where: { variantId: variant.id },
+          order: { inventoryItemId: 'ASC' },
+        });
+        oldValues.push({
+          id: variant.id,
+          name: variant.name,
+          name_key: variant.nameKey,
+          sale_price_minor: Number(variant.salePriceMinor),
+          standard_cost_minor:
+            variant.standardCostMinor === null
+              ? null
+              : Number(variant.standardCostMinor),
+          inventory_item_id: variant.inventoryItemId,
+          recipe_components: recipe.map((c) => ({
+            inventory_item_id: c.inventoryItemId,
+            quantity_atomic: Number(c.quantityAtomic),
+          })),
+          is_default: variant.isDefault,
+          sort_order: variant.sortOrder,
+        });
+      }
+      const previous = update.before;
+      if (
+        previous.name !== existingProduct.name ||
+        previous.categoryId !== existingProduct.categoryId ||
+        previous.variants.length !== oldValues.length ||
+        previous.variants.some((v, index) => {
+          const old = oldValues[index];
+          const components = [...v.recipeComponents].sort((a, b) =>
+            a.inventoryItemId.localeCompare(b.inventoryItemId),
+          );
+          return (
+            v.id !== old.id ||
+            v.name !== old.name ||
+            v.nameKey !== old.name_key ||
+            v.salePriceMinor !== old.sale_price_minor ||
+            v.standardCostMinor !== old.standard_cost_minor ||
+            v.inventoryItemId !== old.inventory_item_id ||
+            v.isDefault !== old.is_default ||
+            v.sortOrder !== old.sort_order ||
+            JSON.stringify(
+              components.map((c) => ({
+                inventory_item_id: c.inventoryItemId,
+                quantity_atomic: c.quantityAtomic,
+              })),
+            ) !== JSON.stringify(old.recipe_components)
+          );
+        })
+      )
+        return this.saveRejectedEvent(
+          manager,
+          event,
+          'El estado anterior no coincide con la base del producto.',
+        );
+
+      if (
+        !variants.every((old) => payload.variants.some((v) => old.id === v.id))
+      ) {
+        return this.saveRejectedEvent(
+          manager,
+          event,
+          'Deben conservarse las variantes existentes.',
+        );
+      }
+    }
+    if (
+      !update &&
+      existingProduct &&
+      existingProduct.createdEventId !== event.event_id
+    ) {
       return this.saveConflict(
         manager,
         event,
@@ -79,7 +211,8 @@ export class ProductoEventHandler {
       });
       if (
         existingVariant &&
-        existingVariant.createdEventId !== event.event_id
+        ((!update && existingVariant.createdEventId !== event.event_id) ||
+          (update && existingVariant.productId !== event.aggregate_id))
       ) {
         return this.saveConflict(
           manager,
@@ -259,10 +392,12 @@ export class ProductoEventHandler {
 
     const canonicalEvent: PushEventDto = {
       ...event,
-      payload: payload.toJson({
-        includeCategoryDependency: false,
-        includeInventoryEventDependencies: false,
-      }),
+      payload: update
+        ? update.toJson()
+        : payload.toJson({
+            includeCategoryDependency: false,
+            includeInventoryEventDependencies: false,
+          }),
     };
     const savedEvent = await this.saveEvent(
       manager,
@@ -275,6 +410,68 @@ export class ProductoEventHandler {
       payload,
       savedEvent.serverSequence,
     );
+
+    if (update && existingProduct) {
+      existingProduct.name = payload.name;
+      existingProduct.categoryId = payload.categoryId;
+      existingProduct.version += 1;
+      existingProduct.lastEventId = event.event_id;
+      existingProduct.lastServerSequence = savedEvent.serverSequence;
+      await manager.save(existingProduct);
+      // Free unique name/order/inventory slots before applying swaps, retaining identities.
+      const maxOrder = Math.max(...existingVariants.map((v) => v.sortOrder));
+      for (let i = 0; i < existingVariants.length; i++) {
+        await manager.update(
+          ProductVariantEntity,
+          { id: existingVariants[i].id },
+          {
+            name: null,
+            nameKey: null,
+            inventoryItemId: null,
+            sortOrder: maxOrder + i + 1,
+          },
+        );
+        await manager.delete(RecipeComponentEntity, {
+          variantId: existingVariants[i].id,
+        });
+      }
+      for (const variant of payload.variants) {
+        const previousVariant = existingVariants.find(
+          (v) => v.id === variant.id,
+        );
+        await manager.save(
+          manager.create(ProductVariantEntity, {
+            ...previousVariant,
+            id: variant.id,
+            productId: existingProduct.id,
+            active: previousVariant?.active ?? true,
+            createdEventId: previousVariant?.createdEventId ?? event.event_id,
+            name: variant.name,
+            nameKey: variant.nameKey,
+            salePriceMinor: String(variant.salePriceMinor),
+            standardCostMinor:
+              variant.standardCostMinor === null
+                ? null
+                : String(variant.standardCostMinor),
+            inventoryItemId: variant.inventoryItemId,
+            isDefault: variant.isDefault,
+            sortOrder: variant.sortOrder,
+            version: existingProduct.version,
+            lastEventId: event.event_id,
+            lastServerSequence: savedEvent.serverSequence,
+          }),
+        );
+        for (const component of variant.recipeComponents) {
+          await manager.save(
+            manager.create(RecipeComponentEntity, {
+              variantId: variant.id,
+              inventoryItemId: component.inventoryItemId,
+              quantityAtomic: String(component.quantityAtomic),
+            }),
+          );
+        }
+      }
+    }
 
     if (!existingProduct) {
       const product = await manager.save(
@@ -343,11 +540,26 @@ export class ProductoEventHandler {
     event: PushEventDto,
   ): Promise<PushEventResultDto> {
     let payload: ProductoCreadoPayload;
+    let update: ProductoActualizadoPayload | null = null;
     try {
-      payload = ProductoCreadoPayload.fromJson(event.payload);
+      if (event.event_type === ProductoActualizadoPayload.eventType)
+        update = ProductoActualizadoPayload.fromJson(event.payload);
+      payload = update?.after ?? ProductoCreadoPayload.fromJson(event.payload);
     } catch (error) {
       return this.saveRejectedEvent(manager, event, this.errorMessage(error));
     }
+
+    if (update)
+      return this.saveConflict(
+        manager,
+        event,
+        payload,
+        'La actualización viola una restricción única.',
+        'product_update_unique_conflict',
+        'product',
+        event.aggregate_id,
+        null,
+      );
 
     const existingProduct = await manager.findOneBy(ProductEntity, {
       id: event.aggregate_id,
@@ -622,7 +834,10 @@ export class ProductoEventHandler {
   ): Promise<PushEventResultDto> {
     const canonicalEvent: PushEventDto = {
       ...event,
-      payload: payload.toJson(),
+      payload:
+        event.event_type === ProductoActualizadoPayload.eventType
+          ? ProductoActualizadoPayload.fromJson(event.payload).toJson()
+          : payload.toJson(),
     };
     const saved = await this.saveEvent(
       manager,
@@ -706,7 +921,8 @@ export class ProductoEventHandler {
                 relationship: 'requires_unique',
               },
             ]),
-        ...(variant.recipeComponents.length === 0
+        ...(variant.recipeComponents.length === 0 &&
+        event.event_type !== ProductoActualizadoPayload.eventType
           ? []
           : [
               {
