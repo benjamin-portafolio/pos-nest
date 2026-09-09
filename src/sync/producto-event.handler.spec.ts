@@ -814,6 +814,7 @@ function managerFixture(
   }> = [];
   let sequence = 10;
   const manager = {
+    find: jest.fn().mockResolvedValue([]),
     findOne: jest.fn(
       (
         target: EntityTarget<unknown>,

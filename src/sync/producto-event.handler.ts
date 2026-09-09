@@ -67,7 +67,8 @@ export class ProductoEventHandler {
       return this.saveRejectedEvent(manager, event, envelopeError);
     }
 
-    if (update) {
+    {
+      // A creation replay must not resurrect a physically deleted aggregate.
       const duplicate = await manager.findOneBy(EventEntity, {
         eventId: event.event_id,
       });
@@ -114,7 +115,7 @@ export class ProductoEventHandler {
         );
       }
       const variants = await manager.find(ProductVariantEntity, {
-        where: { productId: existingProduct.id },
+        where: { productId: existingProduct.id, active: true },
       });
       const oldValues = [] as Array<Record<string, unknown>>;
       for (const variant of variants.sort(
@@ -175,16 +176,6 @@ export class ProductoEventHandler {
           event,
           'El estado anterior no coincide con la base del producto.',
         );
-
-      if (
-        !variants.every((old) => payload.variants.some((v) => old.id === v.id))
-      ) {
-        return this.saveRejectedEvent(
-          manager,
-          event,
-          'Deben conservarse las variantes existentes.',
-        );
-      }
     }
     if (
       !update &&
@@ -203,8 +194,31 @@ export class ProductoEventHandler {
       );
     }
 
+    if (!update && !existingProduct) {
+      const previousCreation = await manager.findOne(EventEntity, {
+        where: {
+          aggregateType: 'product',
+          aggregateId: event.aggregate_id,
+          eventType: ProductoCreadoPayload.eventType,
+          syncStatus: EventSyncStatus.SYNCED,
+        },
+      });
+      if (previousCreation)
+        return this.saveConflict(
+          manager,
+          event,
+          payload,
+          'El identificador pertenece a un artículo eliminado.',
+          'aggregate_id_conflict',
+          'product',
+          event.aggregate_id,
+          previousCreation.eventId,
+        );
+    }
+
+    const nextVariants = update?.deleteProduct ? [] : payload.variants;
     const existingVariants: ProductVariantEntity[] = [];
-    for (const variant of payload.variants) {
+    for (const variant of nextVariants) {
       const existingVariant = await manager.findOne(ProductVariantEntity, {
         where: { id: variant.id },
         lock: { mode: 'pessimistic_write' },
@@ -212,7 +226,9 @@ export class ProductoEventHandler {
       if (
         existingVariant &&
         ((!update && existingVariant.createdEventId !== event.event_id) ||
-          (update && existingVariant.productId !== event.aggregate_id))
+          (update &&
+            (!existingVariant.active ||
+              existingVariant.productId !== event.aggregate_id)))
       ) {
         return this.saveConflict(
           manager,
@@ -224,6 +240,32 @@ export class ProductoEventHandler {
           variant.id,
           existingVariant.createdEventId,
         );
+      }
+      if (!existingVariant) {
+        const historicalRefs = await manager.find(EventRefEntity, {
+          where: {
+            refType: 'product_variant',
+            refId: variant.id,
+            relationship: 'affects',
+          },
+        });
+        for (const ref of historicalRefs) {
+          const historicalEvent = await manager.findOneBy(EventEntity, {
+            eventId: ref.eventId,
+          });
+          if (historicalEvent?.syncStatus === EventSyncStatus.SYNCED) {
+            return this.saveConflict(
+              manager,
+              event,
+              payload,
+              'El identificador pertenece a una variante eliminada.',
+              'variant_id_conflict',
+              'product_variant',
+              variant.id,
+              historicalEvent.eventId,
+            );
+          }
+        }
       }
       if (variant.inventoryItemId) {
         const existingByInventory = await manager.findOne(
@@ -263,7 +305,7 @@ export class ProductoEventHandler {
       if (existingEvent) return this.toResult(existingEvent, 'accepted');
     }
 
-    if (payload.categoryId) {
+    if (!update?.deleteProduct && payload.categoryId) {
       const category = await manager.findOne(CategoryEntity, {
         where: { id: payload.categoryId },
         lock: { mode: 'pessimistic_read' },
@@ -303,7 +345,10 @@ export class ProductoEventHandler {
     }
 
     let saleUnit: UnitEntity | null = null;
-    if (payload.saleConfiguration.mode === SaleMode.MEASURED) {
+    if (
+      !update?.deleteProduct &&
+      payload.saleConfiguration.mode === SaleMode.MEASURED
+    ) {
       saleUnit = await manager.findOne(UnitEntity, {
         where: { unitId: payload.saleConfiguration.saleUnitId },
         lock: { mode: 'pessimistic_read' },
@@ -315,7 +360,9 @@ export class ProductoEventHandler {
     }
 
     const resourceIds = new Set(
-      payload.inventoryDependencies.map((dependency) => dependency.refId),
+      update?.deleteProduct
+        ? []
+        : payload.inventoryDependencies.map((dependency) => dependency.refId),
     );
     const inventoryItems = new Map<string, InventoryItemEntity>();
     for (const inventoryItemId of [...resourceIds].sort()) {
@@ -373,7 +420,7 @@ export class ProductoEventHandler {
       }
     }
 
-    for (const variant of payload.variants) {
+    for (const variant of nextVariants) {
       if (!variant.inventoryItemId) continue;
       const item = inventoryItems.get(variant.inventoryItemId)!;
       const inventoryUnit = await manager.findOne(UnitEntity, {
@@ -412,12 +459,47 @@ export class ProductoEventHandler {
     );
 
     if (update && existingProduct) {
+      existingProduct.active = !update.deleteProduct;
       existingProduct.name = payload.name;
       existingProduct.categoryId = payload.categoryId;
       existingProduct.version += 1;
       existingProduct.lastEventId = event.event_id;
       existingProduct.lastServerSequence = savedEvent.serverSequence;
       await manager.save(existingProduct);
+      for (const removed of update.removedVariants) {
+        // Product lock serializes recipe/link edits. Inspect persisted dependencies,
+        // never a deletion mode proposed by the client.
+        const row = await manager.findOneOrFail(ProductVariantEntity, {
+          where: { id: removed.id },
+          lock: { mode: 'pessimistic_write' },
+        });
+        const recipe = await manager.find(RecipeComponentEntity, {
+          where: { variantId: row.id },
+        });
+        if (row.inventoryItemId === null && recipe.length === 0) {
+          await manager.delete(ProductVariantEntity, { id: row.id });
+        } else {
+          await manager.update(
+            ProductVariantEntity,
+            { id: row.id },
+            {
+              active: false,
+              isDefault: false,
+              version: existingProduct.version,
+              lastEventId: event.event_id,
+              lastServerSequence: savedEvent.serverSequence,
+            },
+          );
+        }
+      }
+      if (update.deleteProduct) {
+        const remaining = await manager.find(ProductVariantEntity, {
+          where: { productId: existingProduct.id },
+        });
+        if (remaining.length === 0)
+          await manager.delete(ProductEntity, { id: existingProduct.id });
+        return this.toResult(savedEvent, 'accepted');
+      }
       // Free unique name/order/inventory slots before applying swaps, retaining identities.
       const maxOrder = Math.max(...existingVariants.map((v) => v.sortOrder));
       for (let i = 0; i < existingVariants.length; i++) {
@@ -897,13 +979,21 @@ export class ProductoEventHandler {
     payload: ProductoCreadoPayload,
     serverSequence: string,
   ): Promise<void> {
+    const update =
+      event.event_type === ProductoActualizadoPayload.eventType
+        ? ProductoActualizadoPayload.fromJson(event.payload)
+        : null;
     const rawValues = [
+      ...(update?.removedVariants ?? []).flatMap((v) => [
+        { refType: 'product_variant', refId: v.id, relationship: 'affects' },
+        { refType: 'recipe', refId: v.id, relationship: 'affects' },
+      ]),
       {
         refType: 'product',
         refId: event.aggregate_id,
         relationship: 'affects',
       },
-      ...payload.variants.flatMap((variant) => [
+      ...(update?.deleteProduct ? [] : payload.variants).flatMap((variant) => [
         {
           refType: 'product_variant',
           refId: variant.id,
@@ -932,12 +1022,14 @@ export class ProductoEventHandler {
               },
             ]),
       ]),
-      ...payload.inventoryDependencies.map((dependency) => ({
-        refType: 'inventory_item',
-        refId: dependency.refId,
-        relationship: 'uses',
-      })),
-      ...(payload.categoryId
+      ...(update?.deleteProduct ? [] : payload.inventoryDependencies).map(
+        (dependency) => ({
+          refType: 'inventory_item',
+          refId: dependency.refId,
+          relationship: 'uses',
+        }),
+      ),
+      ...(!update?.deleteProduct && payload.categoryId
         ? [
             {
               refType: 'category',
@@ -946,7 +1038,8 @@ export class ProductoEventHandler {
             },
           ]
         : []),
-      ...(payload.saleConfiguration.mode === SaleMode.MEASURED
+      ...(!update?.deleteProduct &&
+      payload.saleConfiguration.mode === SaleMode.MEASURED
         ? [
             {
               refType: 'unit',

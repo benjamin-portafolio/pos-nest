@@ -7,6 +7,7 @@ export class ProductoActualizadoPayload {
     readonly baseEventId: string,
     readonly before: ProductoCreadoPayload,
     readonly after: ProductoCreadoPayload,
+    readonly deleteProduct = false,
   ) {}
   static fromJson(json: Record<string, unknown>): ProductoActualizadoPayload {
     if (
@@ -21,26 +22,45 @@ export class ProductoActualizadoPayload {
         throw new Error('Estado de producto inválido.');
       return ProductoCreadoPayload.fromJson(value as Record<string, unknown>);
     };
+    if ('delete_product' in json && typeof json.delete_product !== 'boolean')
+      throw new Error('delete_product debe ser booleano.');
+    const deleteProduct = json.delete_product === true;
+    if (deleteProduct && json.after !== null)
+      throw new Error(
+        'El borrado conserva el estado anterior en before y requiere after null.',
+      );
     const before = read(json.before);
-    const after = read(json.after);
+    const after = deleteProduct ? before : read(json.after);
     if (
       JSON.stringify(before.saleConfiguration) !==
       JSON.stringify(after.saleConfiguration)
     )
       throw new Error('No se puede cambiar la forma de venta.');
-    const ids = new Set(after.variants.map((v) => v.id));
-    if (!before.variants.every((v) => ids.has(v.id)))
-      throw new Error('Deben conservarse las variantes existentes.');
-    return new ProductoActualizadoPayload(json.base_event_id, before, after);
+    return new ProductoActualizadoPayload(
+      json.base_event_id,
+      before,
+      after,
+      deleteProduct,
+    );
+  }
+  get removedVariants() {
+    return this.before.variants.filter(
+      (v) =>
+        this.deleteProduct ||
+        !this.after.variants.some((next) => next.id === v.id),
+    );
   }
   toJson(): Record<string, unknown> {
     return {
       base_event_id: this.baseEventId,
+      ...(this.deleteProduct ? { delete_product: true } : {}),
       before: this.before.toJson(),
-      after: this.after.toJson({
-        includeCategoryDependency: false,
-        includeInventoryEventDependencies: false,
-      }),
+      after: this.deleteProduct
+        ? null
+        : this.after.toJson({
+            includeCategoryDependency: false,
+            includeInventoryEventDependencies: false,
+          }),
     };
   }
 }

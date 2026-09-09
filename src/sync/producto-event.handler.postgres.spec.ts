@@ -72,6 +72,169 @@ runPostgresIntegration('ProductoEventHandler con PostgreSQL real', () => {
     `);
   });
 
+  for (const dependency of ['none', 'inventory', 'recipe']) {
+    it(`elimina variante con ${dependency}, libera nombre/orden y conserva historial al borrar el producto`, async () => {
+      const itemId = '00000000-0000-4000-8000-000000000030';
+      const unitId = '00000000-0000-4000-8000-000000000020';
+      if (dependency !== 'none') {
+        await database.manager.save(
+          database.manager.create(UnitEntity, {
+            unitId,
+            code: 'piece',
+            name: 'Pieza',
+            symbol: 'pza',
+            dimension: 'count',
+            atomicFactor: '1',
+            maxFractionDigits: 0,
+            active: true,
+          }),
+        );
+        await database.manager.save(
+          database.manager.create(InventoryItemEntity, {
+            id: itemId,
+            defaultUnitId: unitId,
+            name: 'Recurso',
+            active: true,
+            version: 1,
+          }),
+        );
+      }
+      const creation = productEvent();
+      const values = creation.payload.variants as Array<
+        Record<string, unknown>
+      >;
+      const firstId = values[0].variant_id as string;
+      if (dependency === 'inventory') values[0].inventory_item_id = itemId;
+      if (dependency === 'recipe')
+        values[0].inventory_configuration = {
+          enabled: true,
+          components: [{ inventory_item_id: itemId, quantity_atomic: 1 }],
+        };
+      if (dependency !== 'none')
+        creation.payload.dependencies = [
+          { ref_type: 'inventory_item', ref_id: itemId },
+        ];
+      expect(
+        (await database.transaction((m) => handler.apply(m, creation))).status,
+      ).toBe('accepted');
+      const before = (
+        await database.manager.findOneByOrFail(EventEntity, {
+          eventId: creation.event_id,
+        })
+      ).payload;
+      const after = structuredClone(before);
+      after.variants = [(after.variants as Array<Record<string, unknown>>)[1]];
+      const kept = (after.variants as Array<Record<string, unknown>>)[0];
+      kept.sort_order = 0;
+      kept.is_default = true;
+      kept.name = values[0].name;
+      after.dependencies = [];
+      const update: PushEventDto = {
+        ...creation,
+        event_id: '00000000-0000-4000-8000-000000000050',
+        local_sequence: 2,
+        event_type: 'producto_actualizado',
+        payload: { base_event_id: creation.event_id, before, after },
+      };
+      expect(
+        (await database.transaction((m) => handler.apply(m, update))).status,
+      ).toBe('accepted');
+      const removed = await database.manager.findOneBy(ProductVariantEntity, {
+        id: firstId,
+      });
+      expect(removed === null).toBe(dependency === 'none');
+      if (removed) {
+        expect(removed.active).toBe(false);
+        expect(removed.name).toBe(values[0].name);
+        expect(removed.inventoryItemId).toBe(
+          dependency === 'inventory' ? itemId : null,
+        );
+      }
+      expect(
+        await database.manager.countBy(RecipeComponentEntity, {
+          variantId: firstId,
+        }),
+      ).toBe(dependency === 'recipe' ? 1 : 0);
+      const active = await database.manager.find(ProductVariantEntity, {
+        where: { active: true },
+      });
+      expect(active).toHaveLength(1);
+      expect(active[0].isDefault).toBe(true);
+      expect(
+        await database.manager.countBy(EventRefEntity, {
+          eventId: update.event_id,
+          refId: firstId,
+          refType: 'product_variant',
+        }),
+      ).toBe(1);
+      // Same event is idempotent; stale deletion cannot overwrite newer state.
+      expect(
+        (await database.transaction((m) => handler.apply(m, update))).status,
+      ).toBe('accepted');
+      const state = (
+        await database.manager.findOneByOrFail(EventEntity, {
+          eventId: update.event_id,
+        })
+      ).payload.after;
+      const deletion: PushEventDto = {
+        ...update,
+        event_id: '00000000-0000-4000-8000-000000000051',
+        local_sequence: 3,
+        base_version: 2,
+        payload: {
+          base_event_id: update.event_id,
+          before: state,
+          after: null,
+          delete_product: true,
+        },
+      };
+      expect(
+        (
+          await database.transaction((m) =>
+            handler.apply(m, {
+              ...deletion,
+              event_id: '00000000-0000-4000-8000-000000000052',
+              local_sequence: 4,
+              base_version: 1,
+            }),
+          )
+        ).status,
+      ).toBe('conflict');
+      expect(
+        (await database.transaction((m) => handler.apply(m, deletion))).status,
+      ).toBe('accepted');
+      expect(
+        (await database.transaction((m) => handler.apply(m, deletion))).status,
+      ).toBe('accepted');
+      const product = await database.manager.findOneBy(ProductEntity, {
+        id: creation.aggregate_id,
+      });
+      expect(product === null).toBe(dependency === 'none');
+      if (product) expect(product.active).toBe(false);
+      expect(
+        await database.manager.countBy(ProductVariantEntity, { active: true }),
+      ).toBe(0);
+      expect(await database.manager.count(InventoryItemEntity)).toBe(
+        dependency === 'none' ? 0 : 1,
+      );
+      // Replaying creation after hard/soft deletion must never resurrect it.
+      expect(
+        (await database.transaction((m) => handler.apply(m, creation))).status,
+      ).toBe('accepted');
+      expect(
+        await database.manager.countBy(ProductEntity, { active: true }),
+      ).toBe(0);
+      const reused = {
+        ...creation,
+        event_id: '00000000-0000-4000-8000-000000000060',
+        local_sequence: 5,
+      };
+      expect(
+        (await database.transaction((m) => handler.apply(m, reused))).status,
+      ).toBe('conflict');
+    });
+  }
+
   it('actualiza precios, costo, nombre y orden sin reemplazar identidades', async () => {
     const creation = productEvent();
     await database.transaction((manager) => handler.apply(manager, creation));

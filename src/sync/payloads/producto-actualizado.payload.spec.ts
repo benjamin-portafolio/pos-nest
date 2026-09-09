@@ -34,6 +34,30 @@ describe('ProductoActualizadoPayload', () => {
         .standardCostMinor,
     ).toBeNull();
   });
+  it('borrado explícito conserva base, serializa y rechaza estados adulterados', () => {
+    const result = ProductoActualizadoPayload.fromJson({
+      base_event_id: id,
+      before: state(),
+      after: null,
+      delete_product: true,
+    });
+    expect(result.deleteProduct).toBe(true);
+    expect(result.removedVariants.map((v) => v.id)).toEqual([id]);
+    expect(
+      ProductoActualizadoPayload.fromJson(result.toJson()).deleteProduct,
+    ).toBe(true);
+    expect(() =>
+      ProductoActualizadoPayload.fromJson({
+        ...result.toJson(),
+        delete_product: 'true',
+      }),
+    ).toThrow('booleano');
+    const after = state();
+    after.product.name = 'Otro';
+    expect(() =>
+      ProductoActualizadoPayload.fromJson({ ...result.toJson(), after }),
+    ).toThrow('estado anterior');
+  });
   it('rechaza cambios de forma de venta', () => {
     const after: Record<string, unknown> = state();
     after.product = {
@@ -53,7 +77,7 @@ describe('ProductoActualizadoPayload', () => {
       }),
     ).toThrow('forma de venta');
   });
-  it('rechaza altas o sustituciones de variantes y bases inválidas', () => {
+  it('permite retirar variantes e incorporar nuevas y rechaza bases inválidas', () => {
     const after = state();
     after.variants[0].variant_id = '00000000-0000-4000-8000-000000000002';
     expect(() =>
@@ -62,7 +86,7 @@ describe('ProductoActualizadoPayload', () => {
         before: state(),
         after,
       }),
-    ).toThrow('variantes existentes');
+    ).not.toThrow();
     expect(() =>
       ProductoActualizadoPayload.fromJson({
         base_event_id: '',

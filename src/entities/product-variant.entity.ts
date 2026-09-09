@@ -6,14 +6,16 @@ import {
   JoinColumn,
   ManyToOne,
   PrimaryColumn,
-  Unique,
 } from 'typeorm';
 import { ProductEntity } from './product.entity';
 import { InventoryItemEntity } from './inventory-item.entity';
 import { SyncProjectionEntity } from './sync-projection.entity';
 
 @Entity({ name: 'product_variants' })
-@Unique('ux_product_variants_product_sort', ['productId', 'sortOrder'])
+@Index('ux_product_variants_product_sort', ['productId', 'sortOrder'], {
+  unique: true,
+  where: '"active" = true',
+})
 @Index('ix_product_variants_product_active_sort', [
   'productId',
   'active',
@@ -21,7 +23,7 @@ import { SyncProjectionEntity } from './sync-projection.entity';
 ])
 @Index('ux_product_variants_product_name_key', ['productId', 'nameKey'], {
   unique: true,
-  where: '"name_key" IS NOT NULL',
+  where: '"active" = true AND "name_key" IS NOT NULL',
 })
 @Index('ux_product_variants_inventory_item', ['inventoryItemId'], {
   unique: true,
