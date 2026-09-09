@@ -106,13 +106,6 @@ export class ProductVariantEntity extends SyncProjectionEntity {
   inventoryItem: InventoryItemEntity | null;
 
   @Column({
-    name: 'is_default',
-    type: 'boolean',
-    comment: 'La variante inicial predeterminada del producto.',
-  })
-  isDefault: boolean;
-
-  @Column({
     name: 'sort_order',
     type: 'integer',
     comment: 'Posicion dentro del producto; inicia en cero.',

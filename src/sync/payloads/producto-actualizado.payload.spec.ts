@@ -12,7 +12,6 @@ const state = () => ({
       name: null,
       sale_price_minor: 1000,
       standard_cost_minor: null,
-      is_default: true,
       sort_order: 0,
     },
   ],
@@ -58,6 +57,20 @@ describe('ProductoActualizadoPayload', () => {
       ProductoActualizadoPayload.fromJson({ ...result.toJson(), after }),
     ).toThrow('estado anterior');
   });
+  it('normaliza flags legados en ambos snapshots sin afectar la actualización', () => {
+    const before = state();
+    const after = state();
+    Object.assign(before.variants[0], { is_default: true });
+    Object.assign(after.variants[0], { is_default: false });
+    const result = ProductoActualizadoPayload.fromJson({
+      base_event_id: id,
+      before,
+      after,
+    });
+    expect(result.before.variants).toEqual(result.after.variants);
+    expect(JSON.stringify(result.toJson())).not.toContain('is_default');
+  });
+
   it('rechaza cambios de forma de venta', () => {
     const after: Record<string, unknown> = state();
     after.product = {

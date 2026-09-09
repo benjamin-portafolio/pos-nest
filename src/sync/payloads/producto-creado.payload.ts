@@ -18,7 +18,6 @@ export interface ProductoCreadoVariantValue {
   standardCostMinor: number | null;
   inventoryItemId: string | null;
   recipeComponents: readonly ProductoCreadoRecipeComponentValue[];
-  isDefault: boolean;
   sortOrder: number;
 }
 
@@ -197,7 +196,6 @@ export class ProductoCreadoPayload {
                 })),
               },
             }),
-        is_default: variant.isDefault,
         sort_order: variant.sortOrder,
       })),
       dependencies: [
@@ -245,9 +243,7 @@ function parseVariant(
   if (variant.barcode !== null && variant.barcode !== undefined) {
     throw new Error(`${fieldName}.barcode debe ser null.`);
   }
-  if (typeof variant.is_default !== 'boolean') {
-    throw new Error(`${fieldName}.is_default debe ser booleano.`);
-  }
+  // Compatibilidad: is_default de eventos anteriores se ignora y no se emite.
   const normalizedName = normalizeVariantName(variant.name);
   const inventoryItemId = optionalId(
     variant.inventory_item_id,
@@ -281,7 +277,6 @@ function parseVariant(
       : null,
     inventoryItemId,
     recipeComponents,
-    isDefault: variant.is_default,
     sortOrder: nonNegativeSafeInteger(
       variant.sort_order,
       `${fieldName}.sort_order`,
@@ -293,7 +288,6 @@ function validateVariants(variants: ProductoCreadoVariantValue[]): void {
   const ids = new Set<string>();
   const nameKeys = new Set<string>();
   const inventoryItemIds = new Set<string>();
-  let defaultCount = 0;
   variants.forEach((variant, index) => {
     if (ids.has(variant.id)) {
       throw new Error('Los IDs de variantes no pueden repetirse.');
@@ -319,16 +313,7 @@ function validateVariants(variants: ProductoCreadoVariantValue[]): void {
     if (variant.sortOrder !== index) {
       throw new Error('sort_order debe ser consecutivo desde cero.');
     }
-    if (variant.isDefault) defaultCount += 1;
-    if (variant.isDefault !== (index === 0)) {
-      throw new Error('La primera variante debe ser la única predeterminada.');
-    }
   });
-  if (defaultCount !== 1) {
-    throw new Error(
-      'producto_creado requiere exactamente una variante predeterminada.',
-    );
-  }
 }
 
 function parseInventoryDependency(

@@ -126,7 +126,6 @@ runPostgresIntegration('ProductoEventHandler con PostgreSQL real', () => {
       after.variants = [(after.variants as Array<Record<string, unknown>>)[1]];
       const kept = (after.variants as Array<Record<string, unknown>>)[0];
       kept.sort_order = 0;
-      kept.is_default = true;
       kept.name = values[0].name;
       after.dependencies = [];
       const update: PushEventDto = {
@@ -159,7 +158,6 @@ runPostgresIntegration('ProductoEventHandler con PostgreSQL real', () => {
         where: { active: true },
       });
       expect(active).toHaveLength(1);
-      expect(active[0].isDefault).toBe(true);
       expect(
         await database.manager.countBy(EventRefEntity, {
           eventId: update.event_id,
@@ -245,7 +243,6 @@ runPostgresIntegration('ProductoEventHandler con PostgreSQL real', () => {
     variants.reverse();
     variants.forEach((v, i) => {
       v.sort_order = i;
-      v.is_default = i === 0;
       v.name = i === 0 ? 'Grande' : 'Chico';
       v.sale_price_minor = 2500;
       v.standard_cost_minor = null;
@@ -255,7 +252,6 @@ runPostgresIntegration('ProductoEventHandler con PostgreSQL real', () => {
       name: 'Nueva',
       sale_price_minor: 2500,
       standard_cost_minor: null,
-      is_default: false,
       sort_order: 2,
     });
     const update = {
@@ -365,18 +361,15 @@ runPostgresIntegration('ProductoEventHandler con PostgreSQL real', () => {
     expect(
       variants.map((variant) => ({
         id: variant.id,
-        isDefault: variant.isDefault,
         sortOrder: variant.sortOrder,
       })),
     ).toEqual([
       {
         id: '00000000-0000-4000-8000-000000000003',
-        isDefault: true,
         sortOrder: 0,
       },
       {
         id: '00000000-0000-4000-8000-000000000004',
-        isDefault: false,
         sortOrder: 1,
       },
     ]);
@@ -408,7 +401,6 @@ runPostgresIntegration('ProductoEventHandler con PostgreSQL real', () => {
         nameKey: null,
         salePriceMinor: '500',
         standardCostMinor: null,
-        isDefault: true,
         sortOrder: 0,
         active: true,
         version: 1,
@@ -572,7 +564,6 @@ function productEvent(): PushEventDto {
           barcode: null,
           sale_price_minor: 1000,
           standard_cost_minor: 200,
-          is_default: true,
           sort_order: 0,
         },
         {
@@ -582,7 +573,6 @@ function productEvent(): PushEventDto {
           barcode: null,
           sale_price_minor: 1200,
           standard_cost_minor: 0,
-          is_default: false,
           sort_order: 1,
         },
       ],
@@ -618,7 +608,6 @@ function recipeProductEvent(): PushEventDto {
               },
             ],
           },
-          is_default: true,
           sort_order: 0,
         },
       ],

@@ -139,7 +139,6 @@ export class ProductoEventHandler {
             inventory_item_id: c.inventoryItemId,
             quantity_atomic: Number(c.quantityAtomic),
           })),
-          is_default: variant.isDefault,
           sort_order: variant.sortOrder,
         });
       }
@@ -160,7 +159,6 @@ export class ProductoEventHandler {
             v.salePriceMinor !== old.sale_price_minor ||
             v.standardCostMinor !== old.standard_cost_minor ||
             v.inventoryItemId !== old.inventory_item_id ||
-            v.isDefault !== old.is_default ||
             v.sortOrder !== old.sort_order ||
             JSON.stringify(
               components.map((c) => ({
@@ -484,7 +482,6 @@ export class ProductoEventHandler {
             { id: row.id },
             {
               active: false,
-              isDefault: false,
               version: existingProduct.version,
               lastEventId: event.event_id,
               lastServerSequence: savedEvent.serverSequence,
@@ -536,7 +533,6 @@ export class ProductoEventHandler {
                 ? null
                 : String(variant.standardCostMinor),
             inventoryItemId: variant.inventoryItemId,
-            isDefault: variant.isDefault,
             sortOrder: variant.sortOrder,
             version: existingProduct.version,
             lastEventId: event.event_id,
@@ -590,7 +586,6 @@ export class ProductoEventHandler {
                 ? null
                 : String(variant.standardCostMinor),
             inventoryItemId: variant.inventoryItemId,
-            isDefault: variant.isDefault,
             sortOrder: variant.sortOrder,
             active: true,
             version: 1,

@@ -45,7 +45,6 @@ describe('ProductoEventHandler', () => {
     ).toEqual(
       expect.objectContaining({
         salePriceMinor: '4550',
-        isDefault: true,
         sortOrder: 0,
       }),
     );
@@ -79,7 +78,6 @@ describe('ProductoEventHandler', () => {
         nameKey: 'grande',
         salePriceMinor: '1000',
         standardCostMinor: '200',
-        isDefault: true,
         sortOrder: 0,
       }),
       expect.objectContaining({
@@ -87,7 +85,6 @@ describe('ProductoEventHandler', () => {
         nameKey: null,
         salePriceMinor: '1200',
         standardCostMinor: '0',
-        isDefault: false,
         sortOrder: 1,
       }),
     ]);
@@ -612,7 +609,6 @@ function productPayload(
         sku: null,
         barcode: null,
         sale_price_minor: 4550,
-        is_default: true,
         sort_order: 0,
       },
     ],
@@ -697,7 +693,6 @@ function advancedProductPayload(): Record<string, unknown> {
       barcode: null,
       sale_price_minor: 1000,
       standard_cost_minor: 200,
-      is_default: true,
       sort_order: 0,
     },
     {
@@ -707,7 +702,6 @@ function advancedProductPayload(): Record<string, unknown> {
       barcode: null,
       sale_price_minor: 1200,
       standard_cost_minor: 0,
-      is_default: false,
       sort_order: 1,
     },
   ];

@@ -22,7 +22,6 @@ describe('ProductoCreadoPayload', () => {
         variants: [
           expect.objectContaining({
             standard_cost_minor: null,
-            is_default: true,
             sort_order: 0,
           }),
         ],
@@ -36,7 +35,6 @@ describe('ProductoCreadoPayload', () => {
         nameKey: 'grande',
         salePriceMinor: 1000,
         standardCostMinor: 200,
-        isDefault: true,
         sortOrder: 0,
       }),
       expect.objectContaining({
@@ -44,7 +42,6 @@ describe('ProductoCreadoPayload', () => {
         nameKey: null,
         salePriceMinor: 1200,
         standardCostMinor: 0,
-        isDefault: false,
         sortOrder: 1,
       }),
     ]);
@@ -240,10 +237,20 @@ describe('ProductoCreadoPayload', () => {
     );
   });
 
+  it('lee eventos anteriores sin conservar is_default ni alterar orden o precios', () => {
+    const canonical = advancedProductPayload();
+    const legacy = advancedProductPayload();
+    (legacy.variants as Array<Record<string, unknown>>).forEach((variant) => {
+      variant.is_default = true;
+    });
+    const parsed = ProductoCreadoPayload.fromJson(legacy).toJson();
+    expect(parsed).toEqual(ProductoCreadoPayload.fromJson(canonical).toJson());
+    expect(JSON.stringify(parsed)).not.toContain('is_default');
+  });
+
   it.each([
     ['IDs repetidos', duplicateIdPayload()],
     ['orden con hueco', invalidOrderPayload()],
-    ['dos predeterminadas', invalidDefaultPayload()],
     ['name_key repetido', duplicateNamePayload()],
   ])('rechaza %s', (_, payload) => {
     expect(() => ProductoCreadoPayload.fromJson(payload)).toThrow();
@@ -265,7 +272,6 @@ function productPayload(): Record<string, unknown> {
         barcode: null,
         sale_price_minor: 1000,
         standard_cost_minor: null,
-        is_default: true,
         sort_order: 0,
       },
     ],
@@ -283,7 +289,6 @@ function advancedProductPayload(): Record<string, unknown> {
       barcode: null,
       sale_price_minor: 1000,
       standard_cost_minor: 200,
-      is_default: true,
       sort_order: 0,
     },
     {
@@ -293,7 +298,6 @@ function advancedProductPayload(): Record<string, unknown> {
       barcode: null,
       sale_price_minor: 1200,
       standard_cost_minor: 0,
-      is_default: false,
       sort_order: 1,
     },
   ];
@@ -339,12 +343,6 @@ function duplicateIdPayload(): Record<string, unknown> {
 function invalidOrderPayload(): Record<string, unknown> {
   const payload = advancedProductPayload();
   (payload.variants as Array<Record<string, unknown>>)[1].sort_order = 2;
-  return payload;
-}
-
-function invalidDefaultPayload(): Record<string, unknown> {
-  const payload = advancedProductPayload();
-  (payload.variants as Array<Record<string, unknown>>)[1].is_default = true;
   return payload;
 }
 
