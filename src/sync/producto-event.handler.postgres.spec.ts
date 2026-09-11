@@ -3,6 +3,8 @@ import { CategoryEntity } from '../entities/category.entity';
 import { EventEntity } from '../entities/event.entity';
 import { EventRefEntity } from '../entities/event-ref.entity';
 import { InventoryItemEntity } from '../entities/inventory-item.entity';
+import { InventoryBalanceEntity } from '../entities/inventory-balance.entity';
+import { InventoryMovementEntity } from '../entities/inventory-movement.entity';
 import { ProductVariantEntity } from '../entities/product-variant.entity';
 import { ProductEntity } from '../entities/product.entity';
 import { RecipeComponentEntity } from '../entities/recipe-component.entity';
@@ -41,6 +43,8 @@ runPostgresIntegration('ProductoEventHandler con PostgreSQL real', () => {
         CategoryEntity,
         UnitEntity,
         InventoryItemEntity,
+        InventoryBalanceEntity,
+        InventoryMovementEntity,
         ProductEntity,
         ProductVariantEntity,
         RecipeComponentEntity,
@@ -73,7 +77,7 @@ runPostgresIntegration('ProductoEventHandler con PostgreSQL real', () => {
   });
 
   for (const dependency of ['none', 'inventory', 'recipe']) {
-    it(`elimina variante con ${dependency}, libera nombre/orden y conserva historial al borrar el producto`, async () => {
+    it(`elimina producto y variantes históricas con ${dependency} conservando inventario`, async () => {
       const itemId = '00000000-0000-4000-8000-000000000030';
       const unitId = '00000000-0000-4000-8000-000000000020';
       if (dependency !== 'none') {
@@ -98,6 +102,20 @@ runPostgresIntegration('ProductoEventHandler con PostgreSQL real', () => {
             version: 1,
           }),
         );
+        await database.manager.save(InventoryBalanceEntity, {
+          inventoryItemId: itemId,
+          quantityOnHandAtomic: '50',
+          quantityAvailableAtomic: '50',
+          lastEventId: '00000000-0000-4000-8000-000000000070',
+        });
+        await database.manager.save(InventoryMovementEntity, {
+          movementId: '00000000-0000-4000-8000-000000000071',
+          inventoryItemId: itemId,
+          eventId: '00000000-0000-4000-8000-000000000070',
+          movementType: 'initial_balance',
+          quantityDeltaAtomic: '50',
+          createdAtLocal: new Date('2026-09-09T12:00:00Z'),
+        });
       }
       const creation = productEvent();
       const values = creation.payload.variants as Array<
@@ -122,6 +140,34 @@ runPostgresIntegration('ProductoEventHandler con PostgreSQL real', () => {
           eventId: creation.event_id,
         })
       ).payload;
+      // Borrar directamente las variantes activas y simular un fallo después
+      // de la cascada debe restaurar el catálogo y no guardar el evento.
+      await expect(
+        database.transaction(async (manager) => {
+          const result = await handler.apply(manager, {
+            ...creation,
+            event_id: '00000000-0000-4000-8000-000000000080',
+            event_type: 'producto_actualizado',
+            local_sequence: 2,
+            payload: {
+              base_event_id: creation.event_id,
+              before,
+              after: null,
+              delete_product: true,
+            },
+          });
+          expect(result.status).toBe('accepted');
+          expect(await manager.count(ProductEntity)).toBe(0);
+          expect(await manager.count(ProductVariantEntity)).toBe(0);
+          expect(await manager.count(RecipeComponentEntity)).toBe(0);
+          throw new Error('fallo transaccional simulado');
+        }),
+      ).rejects.toThrow('fallo transaccional simulado');
+      expect(await database.manager.count(ProductVariantEntity)).toBe(2);
+      expect(await database.manager.count(RecipeComponentEntity)).toBe(
+        dependency === 'recipe' ? 1 : 0,
+      );
+      expect(await database.manager.count(EventEntity)).toBe(1);
       const after = structuredClone(before);
       after.variants = [(after.variants as Array<Record<string, unknown>>)[1]];
       const kept = (after.variants as Array<Record<string, unknown>>)[0];
@@ -207,15 +253,38 @@ runPostgresIntegration('ProductoEventHandler con PostgreSQL real', () => {
       const product = await database.manager.findOneBy(ProductEntity, {
         id: creation.aggregate_id,
       });
-      expect(product === null).toBe(dependency === 'none');
-      if (product) expect(product.active).toBe(false);
+      expect(product).toBeNull();
+      expect(await database.manager.count(ProductVariantEntity)).toBe(0);
+      expect(await database.manager.count(RecipeComponentEntity)).toBe(0);
       expect(
-        await database.manager.countBy(ProductVariantEntity, { active: true }),
-      ).toBe(0);
+        await database.manager.countBy(EventRefEntity, {
+          eventId: deletion.event_id,
+          refId: firstId,
+          refType: 'product_variant',
+        }),
+      ).toBe(dependency === 'none' ? 0 : 1);
       expect(await database.manager.count(InventoryItemEntity)).toBe(
         dependency === 'none' ? 0 : 1,
       );
-      // Replaying creation after hard/soft deletion must never resurrect it.
+      if (dependency !== 'none') {
+        expect(
+          await database.manager.findOneByOrFail(InventoryBalanceEntity, {
+            inventoryItemId: itemId,
+          }),
+        ).toEqual(
+          expect.objectContaining({
+            quantityOnHandAtomic: '50',
+            quantityAvailableAtomic: '50',
+          }),
+        );
+        expect(await database.manager.find(InventoryMovementEntity)).toEqual([
+          expect.objectContaining({
+            inventoryItemId: itemId,
+            quantityDeltaAtomic: '50',
+          }),
+        ]);
+      }
+      // Replaying creation after hard deletion must never resurrect it.
       expect(
         (await database.transaction((m) => handler.apply(m, creation))).status,
       ).toBe('accepted');

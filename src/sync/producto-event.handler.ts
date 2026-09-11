@@ -457,7 +457,13 @@ export class ProductoEventHandler {
     );
 
     if (update && existingProduct) {
-      existingProduct.active = !update.deleteProduct;
+      if (update.deleteProduct) {
+        // La cascada elimina todas las variantes (también inactivas) y recetas.
+        // Los recursos, saldos y movimientos de inventario son independientes.
+        await manager.delete(ProductEntity, { id: existingProduct.id });
+        return this.toResult(savedEvent, 'accepted');
+      }
+      existingProduct.active = true;
       existingProduct.name = payload.name;
       existingProduct.categoryId = payload.categoryId;
       existingProduct.version += 1;
@@ -488,14 +494,6 @@ export class ProductoEventHandler {
             },
           );
         }
-      }
-      if (update.deleteProduct) {
-        const remaining = await manager.find(ProductVariantEntity, {
-          where: { productId: existingProduct.id },
-        });
-        if (remaining.length === 0)
-          await manager.delete(ProductEntity, { id: existingProduct.id });
-        return this.toResult(savedEvent, 'accepted');
       }
       // Free unique name/order/inventory slots before applying swaps, retaining identities.
       const maxOrder = Math.max(...existingVariants.map((v) => v.sortOrder));
@@ -978,8 +976,16 @@ export class ProductoEventHandler {
       event.event_type === ProductoActualizadoPayload.eventType
         ? ProductoActualizadoPayload.fromJson(event.payload)
         : null;
+    const persistedVariantsToDelete = update?.deleteProduct
+      ? await manager.find(ProductVariantEntity, {
+          where: { productId: event.aggregate_id },
+        })
+      : [];
     const rawValues = [
-      ...(update?.removedVariants ?? []).flatMap((v) => [
+      ...[
+        ...(update?.removedVariants ?? []),
+        ...persistedVariantsToDelete,
+      ].flatMap((v) => [
         { refType: 'product_variant', refId: v.id, relationship: 'affects' },
         { refType: 'recipe', refId: v.id, relationship: 'affects' },
       ]),
