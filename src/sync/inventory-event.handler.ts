@@ -264,7 +264,10 @@ export class InventoryEventHandler {
     if (envelopeError) {
       return this.saveRejectedEvent(manager, event, envelopeError);
     }
-    if (payload.movement.movementType === 'initial_balance') {
+    if (
+      payload.movement.movementType === 'initial_balance' ||
+      payload.movement.movementType === 'sale_consumption'
+    ) {
       return this.saveRejectedEvent(
         manager,
         event,

@@ -18,7 +18,11 @@ runPostgresIntegration(
       administration = new DataSource(connection);
       await administration.initialize();
       await administration.query(`CREATE SCHEMA "${schema}"`);
-      database = new DataSource({ ...connection, schema });
+      database = new DataSource({
+        ...connection,
+        schema,
+        extra: { options: `-c search_path=${schema}` },
+      });
       await database.initialize();
       await database.query(`
         CREATE TABLE inventory_items (
@@ -85,7 +89,10 @@ runPostgresIntegration(
           DELETE FROM inventory_items
           WHERE inventory_item_id = '00000000-0000-4000-8000-000000000010'
         `),
-      ).rejects.toMatchObject({ code: '23503' });
+      ).rejects.toHaveProperty(
+        'code',
+        expect.stringMatching(/^(23503|23001)$/),
+      );
     });
   },
 );

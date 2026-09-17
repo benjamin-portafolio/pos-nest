@@ -1,3 +1,4 @@
+import { VentaEventHandler } from './venta-event.handler';
 import { randomUUID } from 'crypto';
 import { BadRequestException, Injectable, Optional } from '@nestjs/common';
 import { Brackets, DataSource, EntityManager, In } from 'typeorm';
@@ -96,6 +97,7 @@ export class SyncService {
     private readonly productoEventHandler?: ProductoEventHandler,
     @Optional()
     private readonly inventoryEventHandler?: InventoryEventHandler,
+    @Optional() private readonly ventaEventHandler?: VentaEventHandler,
   ) {}
 
   async health(): Promise<SyncHealthResponseDto> {
@@ -337,6 +339,8 @@ export class SyncService {
       return this.rejectedResult(event.event_id, validationError);
     }
 
+    const isSaleEvent =
+      this.ventaEventHandler?.supports(event.event_type) ?? false;
     const isCategoryEvent =
       this.categoriaEventHandler?.supports(event.event_type) ?? false;
     const isProductEvent =
@@ -347,7 +351,8 @@ export class SyncService {
       event.event_type !== 'espacio_creado' &&
       !isCategoryEvent &&
       !isProductEvent &&
-      !isInventoryEvent
+      !isInventoryEvent &&
+      !isSaleEvent
     ) {
       return this.rejectedResult(
         event.event_id,
@@ -379,6 +384,7 @@ export class SyncService {
 
     try {
       return await this.dataSource.transaction((manager) => {
+        if (isSaleEvent) return this.ventaEventHandler!.apply(manager, event);
         if (isCategoryEvent) {
           return this.categoriaEventHandler!.apply(manager, event);
         }
@@ -406,6 +412,10 @@ export class SyncService {
         );
       }
 
+      if (isSaleEvent)
+        return this.dataSource.transaction((manager) =>
+          this.ventaEventHandler!.saveUniqueViolationConflict(manager, event),
+        );
       if (isCategoryEvent && event.event_type !== 'categoria_creada') {
         return this.rejectedResult(
           event.event_id,

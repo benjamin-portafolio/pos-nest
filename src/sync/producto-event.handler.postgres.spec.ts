@@ -1,3 +1,6 @@
+import { SalePaymentEntity } from '../entities/sale-payment.entity';
+import { SaleEntity } from '../entities/sale.entity';
+import { SaleItemEntity } from '../entities/sale-item.entity';
 import { DataSource } from 'typeorm';
 import { CategoryEntity } from '../entities/category.entity';
 import { EventEntity } from '../entities/event.entity';
@@ -38,6 +41,12 @@ runPostgresIntegration('ProductoEventHandler con PostgreSQL real', () => {
       ...connection,
       schema,
       entities: [
+        SaleEntity,
+        SaleItemEntity,
+        SalePaymentEntity,
+        ProductVariantEntity,
+        ProductEntity,
+        CategoryEntity,
         EventEntity,
         EventRefEntity,
         CategoryEntity,
@@ -77,7 +86,7 @@ runPostgresIntegration('ProductoEventHandler con PostgreSQL real', () => {
   });
 
   for (const dependency of ['none', 'inventory', 'recipe']) {
-    it(`elimina producto y variantes históricas con ${dependency} conservando inventario`, async () => {
+    it(`desactiva producto y variantes históricas con ${dependency} conservando inventario`, async () => {
       const itemId = '00000000-0000-4000-8000-000000000030';
       const unitId = '00000000-0000-4000-8000-000000000020';
       if (dependency !== 'none') {
@@ -157,9 +166,15 @@ runPostgresIntegration('ProductoEventHandler con PostgreSQL real', () => {
             },
           });
           expect(result.status).toBe('accepted');
-          expect(await manager.count(ProductEntity)).toBe(0);
-          expect(await manager.count(ProductVariantEntity)).toBe(0);
-          expect(await manager.count(RecipeComponentEntity)).toBe(0);
+          expect(await manager.countBy(ProductEntity, { active: true })).toBe(
+            0,
+          );
+          expect(
+            await manager.countBy(ProductVariantEntity, { active: true }),
+          ).toBe(0);
+          expect(await manager.count(RecipeComponentEntity)).toBe(
+            dependency === 'recipe' ? 1 : 0,
+          );
           throw new Error('fallo transaccional simulado');
         }),
       ).rejects.toThrow('fallo transaccional simulado');
@@ -187,7 +202,7 @@ runPostgresIntegration('ProductoEventHandler con PostgreSQL real', () => {
       const removed = await database.manager.findOneBy(ProductVariantEntity, {
         id: firstId,
       });
-      expect(removed === null).toBe(dependency === 'none');
+      expect(removed).not.toBeNull();
       if (removed) {
         expect(removed.active).toBe(false);
         expect(removed.name).toBe(values[0].name);
@@ -253,16 +268,20 @@ runPostgresIntegration('ProductoEventHandler con PostgreSQL real', () => {
       const product = await database.manager.findOneBy(ProductEntity, {
         id: creation.aggregate_id,
       });
-      expect(product).toBeNull();
-      expect(await database.manager.count(ProductVariantEntity)).toBe(0);
-      expect(await database.manager.count(RecipeComponentEntity)).toBe(0);
+      expect(product?.active).toBe(false);
+      expect(
+        await database.manager.countBy(ProductVariantEntity, { active: true }),
+      ).toBe(0);
+      expect(await database.manager.count(RecipeComponentEntity)).toBe(
+        dependency === 'recipe' ? 1 : 0,
+      );
       expect(
         await database.manager.countBy(EventRefEntity, {
           eventId: deletion.event_id,
           refId: firstId,
           refType: 'product_variant',
         }),
-      ).toBe(dependency === 'none' ? 0 : 1);
+      ).toBe(1);
       expect(await database.manager.count(InventoryItemEntity)).toBe(
         dependency === 'none' ? 0 : 1,
       );

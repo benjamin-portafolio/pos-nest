@@ -458,9 +458,27 @@ export class ProductoEventHandler {
 
     if (update && existingProduct) {
       if (update.deleteProduct) {
-        // La cascada elimina todas las variantes (también inactivas) y recetas.
-        // Los recursos, saldos y movimientos de inventario son independientes.
-        await manager.delete(ProductEntity, { id: existingProduct.id });
+        // Conservar referencias para ventas offline todavía no recibidas.
+        await manager.update(
+          ProductVariantEntity,
+          { productId: existingProduct.id },
+          {
+            active: false,
+            version: existingProduct.version + 1,
+            lastEventId: event.event_id,
+            lastServerSequence: savedEvent.serverSequence,
+          },
+        );
+        await manager.update(
+          ProductEntity,
+          { id: existingProduct.id },
+          {
+            active: false,
+            version: existingProduct.version + 1,
+            lastEventId: event.event_id,
+            lastServerSequence: savedEvent.serverSequence,
+          },
+        );
         return this.toResult(savedEvent, 'accepted');
       }
       existingProduct.active = true;
@@ -477,23 +495,16 @@ export class ProductoEventHandler {
           where: { id: removed.id },
           lock: { mode: 'pessimistic_write' },
         });
-        const recipe = await manager.find(RecipeComponentEntity, {
-          where: { variantId: row.id },
-        });
-        if (row.inventoryItemId === null && recipe.length === 0) {
-          await manager.delete(ProductVariantEntity, { id: row.id });
-        } else {
-          await manager.update(
-            ProductVariantEntity,
-            { id: row.id },
-            {
-              active: false,
-              version: existingProduct.version,
-              lastEventId: event.event_id,
-              lastServerSequence: savedEvent.serverSequence,
-            },
-          );
-        }
+        await manager.update(
+          ProductVariantEntity,
+          { id: row.id },
+          {
+            active: false,
+            version: existingProduct.version,
+            lastEventId: event.event_id,
+            lastServerSequence: savedEvent.serverSequence,
+          },
+        );
       }
       // Free unique name/order/inventory slots before applying swaps, retaining identities.
       const maxOrder = Math.max(...existingVariants.map((v) => v.sortOrder));

@@ -2,6 +2,7 @@ export type InventoryMovementType =
   | 'initial_balance'
   | 'stock_receipt'
   | 'manual_adjustment'
+  | 'sale_consumption'
   | 'reversal';
 
 const MOVEMENT_TYPES = new Set<InventoryMovementType>([
@@ -9,6 +10,7 @@ const MOVEMENT_TYPES = new Set<InventoryMovementType>([
   'stock_receipt',
   'manual_adjustment',
   'reversal',
+  'sale_consumption',
 ]);
 
 export const MAX_SAFE_ATOMIC_QUANTITY = Number.MAX_SAFE_INTEGER;
@@ -41,6 +43,8 @@ export class InventoryMovementPayload {
     ) {
       throw new Error('movement.total_cost_minor debe permanecer null.');
     }
+    if (movementType === 'sale_consumption' && quantity >= 0)
+      throw new Error('Consumo requiere delta negativo.');
     const movementId = requiredUuidV4(
       value.movement_id,
       'movement.movement_id',

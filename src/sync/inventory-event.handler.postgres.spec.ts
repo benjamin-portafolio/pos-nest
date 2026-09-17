@@ -1,3 +1,9 @@
+import { CategoryEntity } from '../entities/category.entity';
+import { ProductEntity } from '../entities/product.entity';
+import { ProductVariantEntity } from '../entities/product-variant.entity';
+import { SalePaymentEntity } from '../entities/sale-payment.entity';
+import { SaleEntity } from '../entities/sale.entity';
+import { SaleItemEntity } from '../entities/sale-item.entity';
 import { DataSource } from 'typeorm';
 import { EventEntity } from '../entities/event.entity';
 import { EventRefEntity } from '../entities/event-ref.entity';
@@ -36,6 +42,12 @@ runPostgresIntegration('InventoryEventHandler con PostgreSQL real', () => {
       ...connection,
       schema,
       entities: [
+        SaleEntity,
+        SaleItemEntity,
+        SalePaymentEntity,
+        ProductVariantEntity,
+        ProductEntity,
+        CategoryEntity,
         EventEntity,
         EventRefEntity,
         UnitEntity,

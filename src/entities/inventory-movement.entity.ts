@@ -1,3 +1,4 @@
+import { SaleItemEntity } from './sale-item.entity';
 import {
   Check,
   Column,
@@ -10,6 +11,15 @@ import {
 import { InventoryItemEntity } from './inventory-item.entity';
 
 @Entity({ name: 'inventory_movements' })
+@Index('ux_sale_consumption', ['saleItemId', 'inventoryItemId'], {
+  unique: true,
+  where: "movement_type = 'sale_consumption'",
+})
+@Index('ix_movements_event', ['eventId'])
+@Check(
+  'ck_sale_consumption',
+  "movement_type <> 'sale_consumption' OR (sale_item_id IS NOT NULL AND quantity_delta_atomic < 0 AND total_cost_minor IS NULL)",
+)
 @Index('ix_inventory_movements_item_created', [
   'inventoryItemId',
   'createdAtLocal',
@@ -51,6 +61,10 @@ export class InventoryMovementEntity {
 
   @Column('uuid', { name: 'sale_item_id', nullable: true })
   saleItemId: string | null;
+
+  @ManyToOne(() => SaleItemEntity, { nullable: true, onDelete: 'RESTRICT' })
+  @JoinColumn({ name: 'sale_item_id' })
+  saleItem: SaleItemEntity | null;
 
   @Column('uuid', { name: 'event_id' })
   eventId: string;

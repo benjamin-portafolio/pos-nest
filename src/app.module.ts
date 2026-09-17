@@ -1,3 +1,7 @@
+import { SaleEntity } from './entities/sale.entity';
+import { SaleItemEntity } from './entities/sale-item.entity';
+import { SalePaymentEntity } from './entities/sale-payment.entity';
+import { VentaEventHandler } from './sync/venta-event.handler';
 import { Module } from '@nestjs/common';
 import { AppController } from './app.controller';
 import { AppService } from './app.service';
@@ -39,6 +43,9 @@ import { RecipeComponentEntity } from './entities/recipe-component.entity';
         database: config.getOrThrow<string>('DATABASE_NAME'),
         synchronize: true,
         entities: [
+          SaleEntity,
+          SaleItemEntity,
+          SalePaymentEntity,
           EventEntity,
           CategoryEntity,
           EventRefEntity,
@@ -59,6 +66,7 @@ import { RecipeComponentEntity } from './entities/recipe-component.entity';
   ],
   controllers: [AppController, SyncController],
   providers: [
+    VentaEventHandler,
     AppService,
     EventsGateway,
     SyncService,

@@ -1,3 +1,5 @@
+import { InventoryItemEntity } from '../entities/inventory-item.entity';
+import { UnitEntity } from '../entities/unit.entity';
 import { randomUUID } from 'crypto';
 import { DataSource } from 'typeorm';
 import { CategoryEntity } from '../entities/category.entity';
@@ -27,7 +29,14 @@ runPostgresIntegration('CategoriaEventHandler con PostgreSQL real', () => {
     database = new DataSource({
       ...connection,
       schema,
-      entities: [CategoryEntity, ProductEntity, EventEntity, EventRefEntity],
+      entities: [
+        UnitEntity,
+        InventoryItemEntity,
+        CategoryEntity,
+        ProductEntity,
+        EventEntity,
+        EventRefEntity,
+      ],
       synchronize: true,
     });
     await database.initialize();
