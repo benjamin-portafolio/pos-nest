@@ -1,3 +1,5 @@
+import { ClienteEventHandler } from './cliente-event.handler';
+import { ClienteCreadoPayload } from './payloads/cliente-creado.payload';
 import { VentaEventHandler } from './venta-event.handler';
 import { randomUUID } from 'crypto';
 import { BadRequestException, Injectable, Optional } from '@nestjs/common';
@@ -98,6 +100,7 @@ export class SyncService {
     @Optional()
     private readonly inventoryEventHandler?: InventoryEventHandler,
     @Optional() private readonly ventaEventHandler?: VentaEventHandler,
+    @Optional() private readonly clienteEventHandler?: ClienteEventHandler,
   ) {}
 
   async health(): Promise<SyncHealthResponseDto> {
@@ -339,6 +342,8 @@ export class SyncService {
       return this.rejectedResult(event.event_id, validationError);
     }
 
+    const isClienteEvent =
+      this.clienteEventHandler?.supports(event.event_type) ?? false;
     const isSaleEvent =
       this.ventaEventHandler?.supports(event.event_type) ?? false;
     const isCategoryEvent =
@@ -352,7 +357,8 @@ export class SyncService {
       !isCategoryEvent &&
       !isProductEvent &&
       !isInventoryEvent &&
-      !isSaleEvent
+      !isSaleEvent &&
+      !isClienteEvent
     ) {
       return this.rejectedResult(
         event.event_id,
@@ -384,6 +390,8 @@ export class SyncService {
 
     try {
       return await this.dataSource.transaction((manager) => {
+        if (isClienteEvent)
+          return this.clienteEventHandler!.apply(manager, event);
         if (isSaleEvent) return this.ventaEventHandler!.apply(manager, event);
         if (isCategoryEvent) {
           return this.categoriaEventHandler!.apply(manager, event);
@@ -412,6 +420,10 @@ export class SyncService {
         );
       }
 
+      if (isClienteEvent)
+        return this.dataSource.transaction((manager) =>
+          this.clienteEventHandler!.saveUniqueViolationConflict(manager, event),
+        );
       if (isSaleEvent)
         return this.dataSource.transaction((manager) =>
           this.ventaEventHandler!.saveUniqueViolationConflict(manager, event),
@@ -476,6 +488,7 @@ export class SyncService {
 
     if (
       event.event_type !== 'espacio_creado' &&
+      event.event_type !== ClienteCreadoPayload.eventType &&
       event.event_type !== 'categoria_creada' &&
       event.event_type !== 'categoria_actualizada' &&
       event.event_type !== 'categoria_movida' &&
@@ -899,6 +912,12 @@ export class SyncService {
     }
     if (Number.isNaN(new Date(event.created_at_local).getTime())) {
       return 'created_at_local no es una fecha valida.';
+    }
+    if (
+      event.event_type === ClienteCreadoPayload.eventType &&
+      event.aggregate_type !== ClienteCreadoPayload.aggregateType
+    ) {
+      return 'cliente_creado debe usar aggregate_type cliente.';
     }
     if (
       event.event_type === 'espacio_creado' &&

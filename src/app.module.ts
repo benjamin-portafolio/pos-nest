@@ -1,3 +1,5 @@
+import { ClienteEntity } from './entities/cliente.entity';
+import { ClienteEventHandler } from './sync/cliente-event.handler';
 import { SaleEntity } from './entities/sale.entity';
 import { SaleItemEntity } from './entities/sale-item.entity';
 import { SalePaymentEntity } from './entities/sale-payment.entity';
@@ -43,6 +45,7 @@ import { RecipeComponentEntity } from './entities/recipe-component.entity';
         database: config.getOrThrow<string>('DATABASE_NAME'),
         synchronize: true,
         entities: [
+          ClienteEntity,
           SaleEntity,
           SaleItemEntity,
           SalePaymentEntity,
@@ -66,6 +69,7 @@ import { RecipeComponentEntity } from './entities/recipe-component.entity';
   ],
   controllers: [AppController, SyncController],
   providers: [
+    ClienteEventHandler,
     VentaEventHandler,
     AppService,
     EventsGateway,
