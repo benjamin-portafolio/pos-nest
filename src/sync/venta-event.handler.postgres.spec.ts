@@ -1,3 +1,10 @@
+import { ClienteEntity } from '../entities/cliente.entity';
+import { CreditSaleEntity } from '../entities/credit-sale.entity';
+import { CustomerPaymentEntity } from '../entities/customer-payment.entity';
+import { CreditAllocationEntity } from '../entities/credit-allocation.entity';
+import { ClienteEventHandler } from './cliente-event.handler';
+import { AbonoClienteEventHandler } from './abono-cliente-event.handler';
+import { CustomerCreditProjector } from './customer-credit.projector';
 import { randomUUID } from 'crypto';
 import { DataSource } from 'typeorm';
 import { EventEntity } from '../entities/event.entity';
@@ -55,6 +62,10 @@ integration('Venta efectivo PostgreSQL aislado', () => {
       schema,
       synchronize: true,
       entities: [
+        ClienteEntity,
+        CreditSaleEntity,
+        CustomerPaymentEntity,
+        CreditAllocationEntity,
         EventEntity,
         EventRefEntity,
         SaleEntity,
@@ -80,6 +91,11 @@ integration('Venta efectivo PostgreSQL aislado', () => {
       undefined,
       undefined,
       handler,
+      new ClienteEventHandler(new SyncConflictService()),
+      new AbonoClienteEventHandler(
+        new CustomerCreditProjector(),
+        new SyncConflictService(),
+      ),
     );
   });
   afterAll(async () => {
@@ -91,7 +107,7 @@ integration('Venta efectivo PostgreSQL aislado', () => {
   });
   beforeEach(async () => {
     await db.query(
-      `TRUNCATE "${schema}".events, "${schema}".products, "${schema}".inventory_items, "${schema}".units, "${schema}".sales, "${schema}".sync_conflicts CASCADE`,
+      `TRUNCATE "${schema}".events, "${schema}".clientes, "${schema}".products, "${schema}".inventory_items, "${schema}".units, "${schema}".sales, "${schema}".sync_conflicts CASCADE`,
     );
     productId = randomUUID();
     variantId = randomUUID();
@@ -389,6 +405,179 @@ integration('Venta efectivo PostgreSQL aislado', () => {
     other.payload.payment_id = e.payload.payment_id;
     expect((await push(other)).status).toBe('conflict');
     expect(await db.manager.count(SaleEntity)).toBe(1);
+  });
+  async function customer() {
+    const e: PushEventDto = {
+      event_id: randomUUID(),
+      aggregate_id: randomUUID(),
+      aggregate_type: 'cliente',
+      event_type: 'cliente_creado',
+      device_id: 'tablet',
+      user_id: 'user',
+      created_at_local: new Date().toISOString(),
+      base_version: 1,
+      payload: { nombre: 'Ana', telefono: null },
+    };
+    expect((await push(e)).status).toBe('accepted');
+    return e;
+  }
+  function credit(c: PushEventDto, amount: number, time: number): PushEventDto {
+    const e = sale();
+    e.payload = {
+      ...e.payload,
+      payment_method: 'credit',
+      payment_id: null,
+      received_minor: 0,
+      change_minor: 0,
+      total_minor: amount,
+      cliente_id: c.aggregate_id,
+      cliente_event_id: c.event_id,
+      cliente_nombre: 'Ana',
+      occurred_at_ms: time,
+      dependency_event_ids: [configId, c.event_id],
+      lines: (e.payload.lines as { snapshot: Record<string, unknown> }[]).map(
+        (l) => ({
+          ...l,
+          snapshot: { ...l.snapshot, unit_price_minor: amount },
+        }),
+      ),
+    };
+    return e;
+  }
+  function payment(
+    c: PushEventDto,
+    amount: number,
+    time: number,
+  ): PushEventDto {
+    return {
+      event_id: randomUUID(),
+      aggregate_id: randomUUID(),
+      aggregate_type: 'customer_payment',
+      event_type: 'abono_cliente_registrado',
+      device_id: 'tablet',
+      user_id: 'user',
+      base_version: 1,
+      created_at_local: new Date().toISOString(),
+      payload: {
+        cliente_id: c.aggregate_id,
+        cliente_event_id: c.event_id,
+        amount_minor: amount,
+        occurred_at_ms: time,
+        method: 'cash',
+        reference: null,
+        currency: 'MXN',
+      },
+    };
+  }
+  it('crédito y abonos FIFO: no crea efectivo y conserva distribución al reintentar', async () => {
+    const c = await customer(),
+      v1 = credit(c, 2000, 1000),
+      v2 = credit(c, 5000, 3000);
+    expect((await push(v1)).status).toBe('accepted');
+    expect((await push(payment(c, 1000, 2000))).status).toBe('accepted');
+    expect((await push(v2)).status).toBe('accepted');
+    expect((await push(payment(c, 500, 4000))).status).toBe('accepted');
+    const last = payment(c, 1000, 5000);
+    expect((await push(last)).status).toBe('accepted');
+    expect((await push(last)).status).toBe('duplicate');
+    expect(await db.manager.count(SalePaymentEntity)).toBe(0);
+    const rows = await db.manager.find(CreditAllocationEntity, {
+      where: { paymentId: last.aggregate_id },
+    });
+    expect(rows).toHaveLength(2);
+    expect(rows.map((r) => r.amountMinor)).toEqual(['500', '500']);
+    expect(
+      (await db.manager.findOneByOrFail(SaleEntity, { id: v1.aggregate_id }))
+        .clienteId,
+    ).toBe(c.aggregate_id);
+    const refs = await db.manager.find(EventRefEntity, {
+      where: { eventId: last.event_id, refType: 'customer_account' },
+    });
+    expect(refs[0].refId).toBe(c.aggregate_id);
+  });
+  it('anticipos concurrentes antes de la venta convergen sin sobreaplicar', async () => {
+    const c = await customer();
+    const p1 = payment(c, 3000, 1000),
+      p2 = payment(c, 3000, 2000);
+    p2.device_id = 'other-tablet';
+    expect(
+      (await Promise.all([push(p1), push(p2)])).map((r) => r.status),
+    ).toEqual(['accepted', 'accepted']);
+    const v = credit(c, 5000, 3000);
+    expect((await push(v)).status).toBe('accepted');
+    const rows = await db.manager.find(CreditAllocationEntity);
+    expect(rows.reduce((n, r) => n + Number(r.amountMinor), 0)).toBe(5000);
+    expect(await db.manager.count(CustomerPaymentEntity)).toBe(2);
+    expect(
+      (
+        await db.manager.findOneByOrFail(InventoryBalanceEntity, {
+          inventoryItemId: itemId,
+        })
+      ).quantityOnHandAtomic,
+    ).toBe('-1');
+  });
+  it('rechaza crédito sin cliente y abono inválido sin alterar cuentas', async () => {
+    const c = await customer();
+    const v = credit(c, 2000, 1000);
+    delete v.payload.cliente_id;
+    expect((await push(v)).status).toBe('rejected');
+    expect((await push(payment(c, 0, 1000))).status).toBe('rejected');
+    const missing = payment(c, 1000, 1000);
+    missing.payload.cliente_event_id = randomUUID();
+    expect((await push(missing)).status).toBe('conflict');
+    expect(await db.manager.count(CustomerPaymentEntity)).toBe(0);
+    expect(await db.manager.count(CreditSaleEntity)).toBe(0);
+  });
+  it('pagos fuera de orden y créditos de otra tablet usan el mismo FIFO', async () => {
+    const c = await customer(),
+      v1 = credit(c, 2000, 1000),
+      v2 = credit(c, 5000, 3000);
+    const p1 = payment(c, 1000, 2000),
+      p2 = payment(c, 500, 4000),
+      p3 = payment(c, 1000, 5000);
+    for (const e of [p3, v2, p1, v1, p2])
+      expect((await push(e)).status).toBe('accepted');
+    const rows = await db.manager.find(CreditAllocationEntity, {
+      where: { creditId: v1.aggregate_id },
+    });
+    expect(rows.reduce((n, r) => n + Number(r.amountMinor), 0)).toBe(2000);
+    expect(await db.manager.count(CustomerPaymentEntity)).toBe(3);
+  });
+  it('preflight y pull incluyen movimientos de la cuenta de otra tablet', async () => {
+    const c = await customer(),
+      v = credit(c, 2000, 1000),
+      p = payment(c, 1000, 2000);
+    await push(v);
+    await push(p);
+    const result = await service.preflightEvents({
+      device_id: 'other-tablet',
+      last_full_pull_server_sequence: 0,
+      pending_refs: [
+        {
+          event_id: randomUUID(),
+          event_type: 'abono_cliente_registrado',
+          aggregate_type: 'customer_payment',
+          aggregate_id: randomUUID(),
+          refs: [
+            {
+              type: 'customer_account',
+              id: c.aggregate_id,
+              relationship: 'affects',
+            },
+          ],
+        },
+      ],
+    });
+    expect(result.events.map((e) => e.event_id)).toEqual(
+      expect.arrayContaining([v.event_id, p.event_id]),
+    );
+    const pulled = await service.pullEvents({
+      device_id: 'other-tablet',
+      since: 0,
+    });
+    expect(pulled.events.map((e) => e.event_id)).toEqual(
+      expect.arrayContaining([c.event_id, v.event_id, p.event_id]),
+    );
   });
 });
 

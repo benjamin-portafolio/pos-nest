@@ -1,3 +1,6 @@
+import { AbonoClienteEventHandler } from './abono-cliente-event.handler';
+import { AbonoClienteRegistradoPayload } from './payloads/abono-cliente-registrado.payload';
+import { VentaConfirmadaPayload } from './payloads/venta-confirmada.payload';
 import { ClienteEventHandler } from './cliente-event.handler';
 import { ClienteCreadoPayload } from './payloads/cliente-creado.payload';
 import { VentaEventHandler } from './venta-event.handler';
@@ -101,6 +104,8 @@ export class SyncService {
     private readonly inventoryEventHandler?: InventoryEventHandler,
     @Optional() private readonly ventaEventHandler?: VentaEventHandler,
     @Optional() private readonly clienteEventHandler?: ClienteEventHandler,
+    @Optional()
+    private readonly abonoClienteEventHandler?: AbonoClienteEventHandler,
   ) {}
 
   async health(): Promise<SyncHealthResponseDto> {
@@ -342,6 +347,8 @@ export class SyncService {
       return this.rejectedResult(event.event_id, validationError);
     }
 
+    const isPaymentEvent =
+      this.abonoClienteEventHandler?.supports(event.event_type) ?? false;
     const isClienteEvent =
       this.clienteEventHandler?.supports(event.event_type) ?? false;
     const isSaleEvent =
@@ -358,7 +365,8 @@ export class SyncService {
       !isProductEvent &&
       !isInventoryEvent &&
       !isSaleEvent &&
-      !isClienteEvent
+      !isClienteEvent &&
+      !isPaymentEvent
     ) {
       return this.rejectedResult(
         event.event_id,
@@ -390,6 +398,8 @@ export class SyncService {
 
     try {
       return await this.dataSource.transaction((manager) => {
+        if (isPaymentEvent)
+          return this.abonoClienteEventHandler!.apply(manager, event);
         if (isClienteEvent)
           return this.clienteEventHandler!.apply(manager, event);
         if (isSaleEvent) return this.ventaEventHandler!.apply(manager, event);
@@ -420,6 +430,13 @@ export class SyncService {
         );
       }
 
+      if (isPaymentEvent)
+        return this.dataSource.transaction((manager) =>
+          this.abonoClienteEventHandler!.saveUniqueViolationConflict(
+            manager,
+            event,
+          ),
+        );
       if (isClienteEvent)
         return this.dataSource.transaction((manager) =>
           this.clienteEventHandler!.saveUniqueViolationConflict(manager, event),
@@ -489,6 +506,8 @@ export class SyncService {
     if (
       event.event_type !== 'espacio_creado' &&
       event.event_type !== ClienteCreadoPayload.eventType &&
+      event.event_type !== AbonoClienteRegistradoPayload.eventType &&
+      event.event_type !== VentaConfirmadaPayload.eventType &&
       event.event_type !== 'categoria_creada' &&
       event.event_type !== 'categoria_actualizada' &&
       event.event_type !== 'categoria_movida' &&

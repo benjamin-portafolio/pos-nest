@@ -1,3 +1,4 @@
+import { ClienteEntity } from '../entities/cliente.entity';
 import { CategoryEntity } from '../entities/category.entity';
 import { ProductEntity } from '../entities/product.entity';
 import { ProductVariantEntity } from '../entities/product-variant.entity';
@@ -42,6 +43,7 @@ runPostgresIntegration('InventoryEventHandler con PostgreSQL real', () => {
       ...connection,
       schema,
       entities: [
+        ClienteEntity,
         SaleEntity,
         SaleItemEntity,
         SalePaymentEntity,

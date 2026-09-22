@@ -1,3 +1,6 @@
+import { ClienteEntity } from '../entities/cliente.entity';
+import { CreditSaleEntity } from '../entities/credit-sale.entity';
+import { CustomerCreditProjector } from './customer-credit.projector';
 import { SaleMode } from '../enums/sale-mode.enum';
 import { ProductEntity } from '../entities/product.entity';
 import { UnitEntity } from '../entities/unit.entity';
@@ -28,7 +31,10 @@ import { SyncConflictService } from './sync-conflict.service';
 
 @Injectable()
 export class VentaEventHandler {
-  constructor(private readonly conflicts: SyncConflictService) {}
+  constructor(
+    private readonly conflicts: SyncConflictService,
+    private readonly credits: CustomerCreditProjector = new CustomerCreditProjector(),
+  ) {}
   supports(type: string): boolean {
     return type === VentaConfirmadaPayload.eventType;
   }
@@ -62,6 +68,7 @@ export class VentaEventHandler {
     } catch (e) {
       return this.saveOutcome(manager, event, 'rejected', (e as Error).message);
     }
+    if (p.clienteId) await this.credits.lock(manager, p.clienteId);
     // Serializa confirmaciones del mismo sale_id incluso cuando aún no existe.
     await manager.query(
       'SELECT pg_advisory_xact_lock(hashtextextended($1, 0))',
@@ -87,6 +94,19 @@ export class VentaEventHandler {
           'conflict',
           'Dependencia histórica no disponible: ' + id,
         );
+    }
+    if (p.clienteId) {
+      const cliente = await manager.findOneBy(ClienteEntity, {
+        id: p.clienteId,
+      });
+      if (!cliente || cliente.createdEventId !== p.clienteEventId) {
+        return this.saveOutcome(
+          manager,
+          event,
+          'conflict',
+          'Falta el cliente histórico de la venta.',
+        );
+      }
     }
     // Mismo orden de bloqueo que edición de catálogo: producto, variante, recurso, saldo.
     for (const id of [...new Set(p.lines.map((l) => l.product_id))].sort()) {
@@ -185,6 +205,7 @@ export class VentaEventHandler {
       userId: event.user_id,
       deviceId: event.device_id,
       status: 'confirmada',
+      clienteId: p.clienteId,
       totalMinor: String(p.totalMinor),
       currency: 'MXN',
       createdAtLocal: new Date(event.created_at_local),
@@ -199,16 +220,28 @@ export class VentaEventHandler {
         sortOrder: index,
         snapshot: l,
       });
-    await manager.insert(SalePaymentEntity, {
-      ...metadata,
-      id: p.paymentId,
-      saleId: event.aggregate_id,
-      method: 'cash',
-      currency: 'MXN',
-      amountMinor: String(p.totalMinor),
-      receivedMinor: String(p.receivedMinor),
-      changeMinor: String(p.changeMinor),
-    });
+    if (p.paymentMethod === 'credit') {
+      await manager.insert(CreditSaleEntity, {
+        ...metadata,
+        id: event.aggregate_id,
+        saleId: event.aggregate_id,
+        clienteId: p.clienteId!,
+        amountMinor: String(p.totalMinor),
+        occurredAtMs: String(p.occurredAtMs),
+      });
+      await this.credits.rebuild(manager, p.clienteId!);
+    } else {
+      await manager.insert(SalePaymentEntity, {
+        ...metadata,
+        id: p.paymentId!,
+        saleId: event.aggregate_id,
+        method: 'cash',
+        currency: 'MXN',
+        amountMinor: String(p.totalMinor),
+        receivedMinor: String(p.receivedMinor),
+        changeMinor: String(p.changeMinor),
+      });
+    }
     for (const l of p.lines)
       for (const c of l.consumptions) {
         if (c.movement_id === null) continue;
@@ -380,7 +413,26 @@ export class VentaEventHandler {
   ): Promise<void> {
     const refs = [
       { refType: 'sale', refId: e.aggregateId, relationship: 'affects' },
-      { refType: 'payment', refId: p.paymentId, relationship: 'affects' },
+      ...(p.paymentId
+        ? [{ refType: 'payment', refId: p.paymentId, relationship: 'affects' }]
+        : []),
+      ...(p.clienteId
+        ? [{ refType: 'cliente', refId: p.clienteId, relationship: 'uses' }]
+        : []),
+      ...(p.paymentMethod === 'credit'
+        ? [
+            {
+              refType: 'credit',
+              refId: e.aggregateId,
+              relationship: 'affects',
+            },
+            {
+              refType: 'customer_account',
+              refId: p.clienteId!,
+              relationship: 'affects',
+            },
+          ]
+        : []),
     ];
     for (const l of p.lines) {
       refs.push(

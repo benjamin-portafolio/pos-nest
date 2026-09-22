@@ -1,3 +1,8 @@
+import { CreditSaleEntity } from './entities/credit-sale.entity';
+import { CustomerPaymentEntity } from './entities/customer-payment.entity';
+import { CreditAllocationEntity } from './entities/credit-allocation.entity';
+import { CustomerCreditProjector } from './sync/customer-credit.projector';
+import { AbonoClienteEventHandler } from './sync/abono-cliente-event.handler';
 import { ClienteEntity } from './entities/cliente.entity';
 import { ClienteEventHandler } from './sync/cliente-event.handler';
 import { SaleEntity } from './entities/sale.entity';
@@ -45,6 +50,9 @@ import { RecipeComponentEntity } from './entities/recipe-component.entity';
         database: config.getOrThrow<string>('DATABASE_NAME'),
         synchronize: true,
         entities: [
+          CreditSaleEntity,
+          CustomerPaymentEntity,
+          CreditAllocationEntity,
           ClienteEntity,
           SaleEntity,
           SaleItemEntity,
@@ -69,6 +77,8 @@ import { RecipeComponentEntity } from './entities/recipe-component.entity';
   ],
   controllers: [AppController, SyncController],
   providers: [
+    CustomerCreditProjector,
+    AbonoClienteEventHandler,
     ClienteEventHandler,
     VentaEventHandler,
     AppService,

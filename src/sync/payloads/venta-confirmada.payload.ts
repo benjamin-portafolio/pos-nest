@@ -175,22 +175,51 @@ export class VentaConfirmadaPayload {
   static readonly aggregateType = 'sale';
   static readonly eventType = 'venta_confirmada';
   private constructor(
-    readonly paymentId: string,
+    readonly paymentId: string | null,
     readonly totalMinor: number,
     readonly receivedMinor: number,
     readonly changeMinor: number,
     readonly lines: ConfirmedSaleLine[],
     readonly dependencyEventIds: string[],
+    readonly paymentMethod: string,
+    readonly clienteId: string | null,
+    readonly clienteEventId: string | null,
+    readonly clienteNombre: string | null,
+    readonly occurredAtMs: number | null,
   ) {}
   static fromJson(j: Record<string, unknown>): VentaConfirmadaPayload {
     if (
-      j.payment_method !== 'cash' ||
+      !['cash', 'credit'].includes(j.payment_method as string) ||
       j.currency !== 'MXN' ||
       !Array.isArray(j.lines) ||
       !j.lines.length ||
       !Array.isArray(j.dependency_event_ids)
     )
       throw new Error('Venta inválida.');
+    const credit = j.payment_method === 'credit';
+    if (
+      credit &&
+      (!Number.isSafeInteger(j.occurred_at_ms) ||
+        (j.occurred_at_ms as number) <= 0)
+    )
+      throw new Error('Fecha del crédito inválida.');
+    const clienteId =
+      j.cliente_id == null ? null : requiredUuidV4(j.cliente_id, 'cliente_id');
+    const clienteEventId =
+      j.cliente_event_id == null
+        ? null
+        : requiredUuidV4(j.cliente_event_id, 'cliente_event_id');
+    const clienteNombre = j.cliente_nombre == null ? null : j.cliente_nombre;
+    if (
+      (clienteId &&
+        (!clienteEventId ||
+          typeof clienteNombre !== 'string' ||
+          !clienteNombre.trim())) ||
+      (!clienteId && (clienteEventId || clienteNombre != null)) ||
+      (credit && (!clienteId || j.payment_id != null))
+    ) {
+      throw new Error('Cliente o crédito inválido.');
+    }
     const lines = j.lines.map(parseLine);
     const dependencies = j.dependency_event_ids.map((v) =>
       requiredUuidV4(v, 'dependency'),
@@ -204,26 +233,43 @@ export class VentaConfirmadaPayload {
     );
     if (
       sum !== BigInt(total) ||
-      received < total ||
-      change !== received - total ||
+      (credit
+        ? total <= 0 || received !== 0 || change !== 0
+        : received < total || change !== received - total) ||
+      (clienteEventId != null && !dependencies.includes(clienteEventId)) ||
       new Set(lines.map((l) => l.sale_item_id)).size !== lines.length ||
       new Set(movements).size !== movements.length ||
       !lines.every((l) => dependencies.includes(l.configuration_event_id))
     )
       throw new Error('Total, pago o identidades inconsistentes.');
     return new VentaConfirmadaPayload(
-      requiredUuidV4(j.payment_id, 'payment_id'),
+      credit ? null : requiredUuidV4(j.payment_id, 'payment_id'),
       total,
       received,
       change,
       lines,
       dependencies,
+      j.payment_method as string,
+      clienteId,
+      clienteEventId,
+      clienteNombre as string | null,
+      credit ? (j.occurred_at_ms as number) : null,
     );
   }
   toJson(): Record<string, unknown> {
     return {
       payment_id: this.paymentId,
-      payment_method: 'cash',
+      payment_method: this.paymentMethod,
+      ...(this.occurredAtMs != null
+        ? { occurred_at_ms: this.occurredAtMs }
+        : {}),
+      ...(this.clienteId
+        ? {
+            cliente_id: this.clienteId,
+            cliente_event_id: this.clienteEventId,
+            cliente_nombre: this.clienteNombre,
+          }
+        : {}),
       currency: 'MXN',
       total_minor: this.totalMinor,
       received_minor: this.receivedMinor,
