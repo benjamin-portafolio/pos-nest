@@ -228,6 +228,142 @@ integration('Clientes: PostgreSQL y sincronización en esquema aislado', () => {
       ).createdEventId,
     ).toBe(winner.event_id);
   });
+  async function updateEvent(
+    creation: PushEventDto,
+    overrides: Partial<PushEventDto> = {},
+  ) {
+    return event({
+      aggregate_id: creation.aggregate_id,
+      event_type: 'cliente_actualizado',
+      payload: {
+        base_event_id: creation.event_id,
+        before: { nombre: 'Ana', telefono: '00123' },
+        after: { nombre: ' Ana María ', telefono: ' ' },
+      },
+      ...overrides,
+    });
+  }
+  it('edita, limpia teléfono y conserva identidad; pull y reintentos son idempotentes', async () => {
+    const creation = event();
+    await push(creation);
+    const edit = await updateEvent(creation);
+    const result = await push(edit);
+    expect(result.status).toBe('accepted');
+    expect(
+      await db.manager.findOneByOrFail(ClienteEntity, {
+        id: creation.aggregate_id,
+      }),
+    ).toMatchObject({
+      nombre: 'Ana María',
+      telefono: null,
+      version: 2,
+      createdEventId: creation.event_id,
+      lastEventId: edit.event_id,
+    });
+    expect((await push(edit)).status).toBe('duplicate');
+    const pull = await service.pullEvents({ since: 0 });
+    expect(pull.events).toHaveLength(2);
+    expect(pull.events[1].payload.after).toEqual({
+      nombre: 'Ana María',
+      telefono: null,
+    });
+    expect(await db.manager.count(EventRefEntity)).toBe(2);
+    const next = event({
+      aggregate_id: creation.aggregate_id,
+      event_type: 'cliente_actualizado',
+      base_version: 2,
+      payload: {
+        base_event_id: edit.event_id,
+        before: { nombre: 'Ana María', telefono: null },
+        after: { nombre: 'Otra edición', telefono: '0001' },
+      },
+    });
+    expect((await push(next)).status).toBe('accepted');
+    expect(
+      (
+        await db.manager.findOneByOrFail(ClienteEntity, {
+          id: creation.aggregate_id,
+        })
+      ).version,
+    ).toBe(3);
+  });
+  it('ediciones concurrentes conservan un ganador y reportan la base obsoleta', async () => {
+    const creation = event();
+    await push(creation);
+    const edits = await Promise.all([
+      updateEvent(creation),
+      updateEvent(creation),
+    ]);
+    expect(
+      (await Promise.all(edits.map(push))).map((r) => r.status).sort(),
+    ).toEqual(['accepted', 'conflict']);
+    expect(
+      (
+        await db.manager.findOneByOrFail(ClienteEntity, {
+          id: creation.aggregate_id,
+        })
+      ).version,
+    ).toBe(2);
+    expect(await db.manager.count(SyncConflictEntity)).toBe(1);
+  });
+  it('rechaza payload inválido y detecta before manipulado sin cambiar el cliente', async () => {
+    const creation = event();
+    await push(creation);
+    const edit = await updateEvent(creation);
+    expect(
+      (
+        await push({
+          ...edit,
+          payload: { ...edit.payload, after: { nombre: ' ' } },
+        })
+      ).status,
+    ).toBe('rejected');
+    const forged = await updateEvent(creation);
+    expect(
+      (
+        await push({
+          ...forged,
+          payload: { ...forged.payload, before: { nombre: 'Falso' } },
+        })
+      ).status,
+    ).toBe('conflict');
+    expect(
+      (
+        await db.manager.findOneByOrFail(ClienteEntity, {
+          id: creation.aggregate_id,
+        })
+      ).nombre,
+    ).toBe('Ana');
+  });
+  it('acepta reportar un conflicto de edición detectado localmente', async () => {
+    const creation = event();
+    await push(creation);
+    const edit = await updateEvent(creation);
+    const report = await service.reportConflicts({
+      device_id: 'tablet',
+      events: [
+        {
+          ...edit,
+          reason: 'Base obsoleta',
+          refs: [
+            {
+              type: 'cliente',
+              id: creation.aggregate_id,
+              relationship: 'affects',
+            },
+          ],
+        },
+      ],
+    });
+    expect(report.results[0].status).toBe('conflict');
+    expect(
+      (
+        await db.manager.findOneByOrFail(ClienteEntity, {
+          id: creation.aggregate_id,
+        })
+      ).version,
+    ).toBe(1);
+  });
   it('la migración no permite retirar una tabla con clientes', async () => {
     await push(event());
     const runner = db.createQueryRunner();

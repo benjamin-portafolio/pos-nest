@@ -3,6 +3,7 @@ import { AbonoClienteRegistradoPayload } from './payloads/abono-cliente-registra
 import { VentaConfirmadaPayload } from './payloads/venta-confirmada.payload';
 import { ClienteEventHandler } from './cliente-event.handler';
 import { ClienteCreadoPayload } from './payloads/cliente-creado.payload';
+import { ClienteActualizadoPayload } from './payloads/cliente-actualizado.payload';
 import { VentaEventHandler } from './venta-event.handler';
 import { randomUUID } from 'crypto';
 import { BadRequestException, Injectable, Optional } from '@nestjs/common';
@@ -506,6 +507,7 @@ export class SyncService {
     if (
       event.event_type !== 'espacio_creado' &&
       event.event_type !== ClienteCreadoPayload.eventType &&
+      event.event_type !== ClienteActualizadoPayload.eventType &&
       event.event_type !== AbonoClienteRegistradoPayload.eventType &&
       event.event_type !== VentaConfirmadaPayload.eventType &&
       event.event_type !== 'categoria_creada' &&
@@ -933,10 +935,11 @@ export class SyncService {
       return 'created_at_local no es una fecha valida.';
     }
     if (
-      event.event_type === ClienteCreadoPayload.eventType &&
+      (event.event_type === ClienteCreadoPayload.eventType ||
+        event.event_type === ClienteActualizadoPayload.eventType) &&
       event.aggregate_type !== ClienteCreadoPayload.aggregateType
     ) {
-      return 'cliente_creado debe usar aggregate_type cliente.';
+      return 'Los eventos de cliente deben usar aggregate_type cliente.';
     }
     if (
       event.event_type === 'espacio_creado' &&

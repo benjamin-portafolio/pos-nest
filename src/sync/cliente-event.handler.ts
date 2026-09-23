@@ -7,6 +7,7 @@ import { EventRefEntity } from '../entities/event-ref.entity';
 import { EventSyncStatus } from '../enums/event-sync-status.enum';
 import { PushEventDto, PushEventResultDto } from './dto/push-events.dto';
 import { ClienteCreadoPayload } from './payloads/cliente-creado.payload';
+import { ClienteActualizadoPayload } from './payloads/cliente-actualizado.payload';
 import { requiredUuidV4 } from './payloads/inventory-movement.payload';
 import { SyncConflictService } from './sync-conflict.service';
 
@@ -14,7 +15,10 @@ import { SyncConflictService } from './sync-conflict.service';
 export class ClienteEventHandler {
   constructor(private readonly conflicts: SyncConflictService) {}
   supports(type: string): boolean {
-    return type === ClienteCreadoPayload.eventType;
+    return (
+      type === ClienteCreadoPayload.eventType ||
+      type === ClienteActualizadoPayload.eventType
+    );
   }
 
   async apply(
@@ -33,6 +37,8 @@ export class ClienteEventHandler {
         reason: (error as Error).message,
       };
     }
+    if (event.event_type === ClienteActualizadoPayload.eventType)
+      return this.applyUpdate(manager, event);
     let payload: ClienteCreadoPayload;
     try {
       if (
@@ -88,6 +94,87 @@ export class ClienteEventHandler {
     return this.result(saved, 'accepted');
   }
 
+  private async applyUpdate(
+    manager: EntityManager,
+    event: PushEventDto,
+  ): Promise<PushEventResultDto> {
+    let payload: ClienteActualizadoPayload;
+    try {
+      if (
+        event.aggregate_type !== ClienteActualizadoPayload.aggregateType ||
+        !Number.isInteger(event.base_version) ||
+        event.base_version! < 1
+      ) {
+        throw new Error('Base de cliente inválida.');
+      }
+      payload = ClienteActualizadoPayload.fromJson(event.payload);
+    } catch (error) {
+      return this.result(
+        await this.saveEvent(
+          manager,
+          event,
+          EventSyncStatus.REJECTED,
+          (error as Error).message,
+        ),
+        'rejected',
+      );
+    }
+    await manager.query(
+      'SELECT pg_advisory_xact_lock(hashtextextended($1, 0))',
+      [ClienteActualizadoPayload.aggregateType + ':' + event.aggregate_id],
+    );
+    const duplicate = await manager.findOneBy(EventEntity, {
+      eventId: event.event_id,
+    });
+    if (duplicate) return this.result(duplicate, 'duplicate');
+    const current = await manager.findOneBy(ClienteEntity, {
+      id: event.aggregate_id,
+    });
+    const base = await manager.findOneBy(EventEntity, {
+      eventId: payload.baseEventId,
+    });
+    if (
+      !current ||
+      !current.active ||
+      current.lastEventId !== payload.baseEventId ||
+      current.version !== event.base_version ||
+      current.nombre !== payload.before.nombre ||
+      current.telefono !== payload.before.telefono ||
+      !base ||
+      base.syncStatus !== EventSyncStatus.SYNCED ||
+      base.aggregateId !== event.aggregate_id ||
+      base.aggregateType !== ClienteActualizadoPayload.aggregateType ||
+      (event.base_server_sequence != null &&
+        Number(event.base_server_sequence) > Number(base.serverSequence))
+    ) {
+      return this.saveConflict(
+        manager,
+        event,
+        current?.lastEventId ?? null,
+        'El cliente cambió desde la base de la edición.',
+        'stale_base_conflict',
+      );
+    }
+    const saved = await this.saveEvent(
+      manager,
+      { ...event, payload: payload.toJson() },
+      EventSyncStatus.SYNCED,
+    );
+    await manager.update(
+      ClienteEntity,
+      { id: current.id },
+      {
+        nombre: payload.after.nombre,
+        telefono: payload.after.telefono,
+        version: current.version + 1,
+        lastEventId: event.event_id,
+        lastServerSequence: saved.serverSequence,
+      },
+    );
+    await this.saveRef(manager, saved);
+    return this.result(saved, 'accepted');
+  }
+
   async saveUniqueViolationConflict(
     manager: EntityManager,
     event: PushEventDto,
@@ -102,8 +189,9 @@ export class ClienteEventHandler {
     manager: EntityManager,
     event: PushEventDto,
     winner: string | null,
+    reason = `Ya existe un cliente con id ${event.aggregate_id}.`,
+    conflictType = 'aggregate_id_conflict',
   ): Promise<PushEventResultDto> {
-    const reason = `Ya existe un cliente con id ${event.aggregate_id}.`;
     const saved = await this.saveEvent(
       manager,
       event,
@@ -112,7 +200,7 @@ export class ClienteEventHandler {
     );
     await this.saveRef(manager, saved);
     const conflict = await this.conflicts.recordConflict(manager, {
-      conflictType: 'aggregate_id_conflict',
+      conflictType,
       refType: ClienteCreadoPayload.aggregateType,
       refId: event.aggregate_id,
       reason,
