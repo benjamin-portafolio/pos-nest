@@ -186,10 +186,11 @@ export class VentaConfirmadaPayload {
     readonly clienteEventId: string | null,
     readonly clienteNombre: string | null,
     readonly occurredAtMs: number | null,
+    readonly paymentReference: string | null,
   ) {}
   static fromJson(j: Record<string, unknown>): VentaConfirmadaPayload {
     if (
-      !['cash', 'credit'].includes(j.payment_method as string) ||
+      !['cash', 'credit', 'transfer'].includes(j.payment_method as string) ||
       j.currency !== 'MXN' ||
       !Array.isArray(j.lines) ||
       !j.lines.length ||
@@ -197,6 +198,11 @@ export class VentaConfirmadaPayload {
     )
       throw new Error('Venta inválida.');
     const credit = j.payment_method === 'credit';
+    if (j.payment_reference != null && typeof j.payment_reference !== 'string')
+      throw new Error('Referencia inválida.');
+    const reference = j.payment_reference?.trim() || null;
+    if (reference != null && reference.length > 500)
+      throw new Error('La referencia admite hasta 500 caracteres.');
     if (
       credit &&
       (!Number.isSafeInteger(j.occurred_at_ms) ||
@@ -233,6 +239,8 @@ export class VentaConfirmadaPayload {
     );
     if (
       sum !== BigInt(total) ||
+      (j.payment_method === 'transfer' &&
+        (received !== total || change !== 0)) ||
       (credit
         ? total <= 0 || received !== 0 || change !== 0
         : received < total || change !== received - total) ||
@@ -254,12 +262,16 @@ export class VentaConfirmadaPayload {
       clienteEventId,
       clienteNombre as string | null,
       credit ? (j.occurred_at_ms as number) : null,
+      reference,
     );
   }
   toJson(): Record<string, unknown> {
     return {
       payment_id: this.paymentId,
       payment_method: this.paymentMethod,
+      ...(this.paymentReference != null
+        ? { payment_reference: this.paymentReference }
+        : {}),
       ...(this.occurredAtMs != null
         ? { occurred_at_ms: this.occurredAtMs }
         : {}),

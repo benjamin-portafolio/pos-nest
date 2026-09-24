@@ -13,6 +13,10 @@ import { SaleEntity } from './sale.entity';
   'ck_cash_payment',
   '"amount_minor" >= 0 AND "received_minor" >= "amount_minor" AND "received_minor" <= 9007199254740991 AND "change_minor" = "received_minor" - "amount_minor"',
 )
+@Check(
+  'ck_direct_payment_method',
+  `"method" IN ('cash', 'transfer') AND "currency" = 'MXN' AND ("method" <> 'transfer' OR ("received_minor" = "amount_minor" AND "change_minor" = 0))`,
+)
 export class SalePaymentEntity extends SyncProjectionEntity {
   @PrimaryColumn('uuid', { name: 'payment_id' }) id: string;
   @Column('uuid', { name: 'sale_id', unique: true }) saleId: string;
@@ -21,6 +25,9 @@ export class SalePaymentEntity extends SyncProjectionEntity {
   sale: SaleEntity;
   @Column({ type: 'varchar', default: 'cash' }) method: string;
   @Column({ type: 'varchar', length: 3 }) currency: string;
+  @Column({ type: 'varchar', length: 500, nullable: true }) reference:
+    | string
+    | null;
   @Column({ name: 'amount_minor', type: 'bigint' }) amountMinor: string;
   @Column({ name: 'received_minor', type: 'bigint' }) receivedMinor: string;
   @Column({ name: 'change_minor', type: 'bigint' }) changeMinor: string;

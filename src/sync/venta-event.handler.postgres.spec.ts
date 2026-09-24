@@ -1,3 +1,4 @@
+import { CollectionsReportService } from '../reports/collections-report.service';
 import { ClienteEntity } from '../entities/cliente.entity';
 import { CreditSaleEntity } from '../entities/credit-sale.entity';
 import { CustomerPaymentEntity } from '../entities/customer-payment.entity';
@@ -269,6 +270,106 @@ integration('Venta efectivo PostgreSQL aislado', () => {
   const push = async (e: PushEventDto) =>
     (await service.pushEvents({ device_id: e.device_id, events: [e] }))
       .results[0];
+
+  function transfer(reference?: string | null): PushEventDto {
+    const e = sale();
+    Object.assign(e.payload, {
+      payment_method: 'transfer',
+      received_minor: 10000,
+      change_minor: 0,
+      payment_reference: reference,
+    });
+    return e;
+  }
+  it.each([undefined, null, '', '   ', '  REF-BANK  ', 'x'.repeat(500)])(
+    'transferencia conserva referencia %s durante reintento y pull',
+    async (reference) => {
+      const e = transfer(reference);
+      expect((await push(e)).status).toBe('accepted');
+      expect((await push(e)).status).toBe('duplicate');
+      const p = await db.manager.findOneByOrFail(SalePaymentEntity, {
+        saleId: e.aggregate_id,
+      });
+      expect(p.method).toBe('transfer');
+      expect(p.reference).toBe(reference?.trim() || null);
+      expect(p.amountMinor).toBe('10000');
+      expect(p.receivedMinor).toBe('10000');
+      expect(p.changeMinor).toBe('0');
+      const pulled = (await service.pullEvents({ since: 0 })).events.find(
+        (v) => v.event_id === e.event_id,
+      )!;
+      const payload = VentaConfirmadaPayload.fromJson(pulled.payload);
+      expect(payload.paymentMethod).toBe('transfer');
+      expect(payload.paymentReference).toBe(reference?.trim() || null);
+      expect(await db.manager.count(SalePaymentEntity)).toBe(1);
+      expect(await db.manager.count(InventoryMovementEntity)).toBe(1);
+    },
+  );
+  it('transferencia concurrente y rollback preservan unicidad de pago y consumo', async () => {
+    const e = transfer('BANK');
+    const spy = jest
+      .spyOn(
+        handler as unknown as { saveRefs: () => Promise<void> },
+        'saveRefs',
+      )
+      .mockRejectedValueOnce(new Error('injected'));
+    await expect(push(e)).rejects.toThrow('injected');
+    spy.mockRestore();
+    expect(await db.manager.count(SalePaymentEntity)).toBe(0);
+    expect(await db.manager.count(InventoryMovementEntity)).toBe(0);
+    expect(
+      await db.manager.findOneBy(EventEntity, { eventId: e.event_id }),
+    ).toBeNull();
+    const second = { ...transfer(), aggregate_id: e.aggregate_id };
+    expect(
+      (await Promise.all([push(e), push(second)])).map((r) => r.status).sort(),
+    ).toEqual(['accepted', 'conflict']);
+    expect(await db.manager.count(SalePaymentEntity)).toBe(1);
+    expect(await db.manager.count(InventoryMovementEntity)).toBe(1);
+  });
+  it('reporte combina pagos y abonos por fecha de recepción sin contar aplicaciones', async () => {
+    const c = await customer();
+    const before = Date.UTC(2026, 8, 20),
+      day = Date.UTC(2026, 8, 21),
+      end = day + 86400000;
+    const advance = payment(c, 5000, before);
+    advance.payload.method = 'transfer';
+    const cash = sale();
+    cash.created_at_local = new Date(day).toISOString();
+    const bank = transfer('DIRECT');
+    bank.created_at_local = new Date(day + 1000).toISOString();
+    const abono = payment(c, 1000, day + 2000);
+    abono.payload.method = 'transfer';
+    abono.payload.reference = 'ABONO';
+    for (const e of [
+      advance,
+      credit(c, 2000, day),
+      credit(c, 2000, day + 1),
+      cash,
+      bank,
+      abono,
+    ])
+      expect((await push(e)).status).toBe('accepted');
+    expect(await db.manager.count(CreditAllocationEntity)).toBe(2);
+    const reports = new CollectionsReportService(db);
+    const report = await reports.report(day, end);
+    expect(report.cash_minor).toBe('10000');
+    expect(report.transfer_minor).toBe('11000');
+    expect(report.total_minor).toBe('21000');
+    expect(report.movements).toHaveLength(3);
+    expect(
+      report.movements.find((m) => m.origin === 'customer_payment'),
+    ).toMatchObject({
+      id: abono.aggregate_id,
+      reference: 'ABONO',
+      user_id: 'user',
+      device_id: 'tablet',
+      cliente_nombre: 'Ana',
+    });
+    expect((await reports.report(before, day)).total_minor).toBe('5000');
+    expect((await reports.report(end, end + 1000)).total_minor).toBe('0');
+    await expect(reports.report(end, day)).rejects.toThrow('Período inválido');
+  });
   it.each(['none', 'direct', 'recipe'] as const)(
     'persiste %s unit y measured, redondeo y saldo negativo',
     async (mode) => {

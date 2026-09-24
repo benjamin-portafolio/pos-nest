@@ -1,3 +1,5 @@
+import { CollectionsReportService } from './reports/collections-report.service';
+import { CollectionsReportController } from './reports/collections-report.controller';
 import { CreditSaleEntity } from './entities/credit-sale.entity';
 import { CustomerPaymentEntity } from './entities/customer-payment.entity';
 import { CreditAllocationEntity } from './entities/credit-allocation.entity';
@@ -75,8 +77,9 @@ import { RecipeComponentEntity } from './entities/recipe-component.entity';
       }),
     }),
   ],
-  controllers: [AppController, SyncController],
+  controllers: [AppController, SyncController, CollectionsReportController],
   providers: [
+    CollectionsReportService,
     CustomerCreditProjector,
     AbonoClienteEventHandler,
     ClienteEventHandler,
