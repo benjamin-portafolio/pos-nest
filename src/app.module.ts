@@ -11,6 +11,9 @@ import { SaleEntity } from './entities/sale.entity';
 import { SaleItemEntity } from './entities/sale-item.entity';
 import { SalePaymentEntity } from './entities/sale-payment.entity';
 import { VentaEventHandler } from './sync/venta-event.handler';
+import { CashSessionEntity } from './entities/cash-session.entity';
+import { CashMovementEntity } from './entities/cash-movement.entity';
+import { CashEventHandler } from './sync/cash-event.handler';
 import { Module } from '@nestjs/common';
 import { AppController } from './app.controller';
 import { AppService } from './app.service';
@@ -37,6 +40,12 @@ import { InventoryBalanceEntity } from './entities/inventory-balance.entity';
 import { InventoryMovementEntity } from './entities/inventory-movement.entity';
 import { InventoryUnitSeedService } from './inventory/inventory-unit-seed.service';
 import { RecipeComponentEntity } from './entities/recipe-component.entity';
+import { FinancialCategoryEntity } from './entities/financial-category.entity';
+import { FinancialEntryEntity } from './entities/financial-entry.entity';
+import { FinancialCategoryEventHandler } from './sync/financial-category-event.handler';
+import { FinancialEntryEventHandler } from './sync/financial-entry-event.handler';
+import { FinancialReportService } from './reports/financial-report.service';
+import { FinancialReportController } from './reports/financial-report.controller';
 
 @Module({
   imports: [
@@ -72,18 +81,31 @@ import { RecipeComponentEntity } from './entities/recipe-component.entity';
           InventoryBalanceEntity,
           InventoryMovementEntity,
           RecipeComponentEntity,
+          FinancialCategoryEntity,
+          FinancialEntryEntity,
+          CashSessionEntity,
+          CashMovementEntity,
         ],
         autoLoadEntities: true,
       }),
     }),
   ],
-  controllers: [AppController, SyncController, CollectionsReportController],
+  controllers: [
+    AppController,
+    SyncController,
+    CollectionsReportController,
+    FinancialReportController,
+  ],
   providers: [
+    CashEventHandler,
     CollectionsReportService,
+    FinancialReportService,
     CustomerCreditProjector,
     AbonoClienteEventHandler,
     ClienteEventHandler,
     VentaEventHandler,
+    FinancialCategoryEventHandler,
+    FinancialEntryEventHandler,
     AppService,
     EventsGateway,
     SyncService,

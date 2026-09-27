@@ -1,3 +1,8 @@
+import { CashSessionEntity } from '../entities/cash-session.entity';
+import { CashMovementEntity } from '../entities/cash-movement.entity';
+import { FinancialCategoryEntity } from '../entities/financial-category.entity';
+import { FinancialEntryEntity } from '../entities/financial-entry.entity';
+import { CashEventHandler } from './cash-event.handler';
 import { CollectionsReportService } from '../reports/collections-report.service';
 import { ClienteEntity } from '../entities/cliente.entity';
 import { CreditSaleEntity } from '../entities/credit-sale.entity';
@@ -63,6 +68,7 @@ integration('Venta efectivo PostgreSQL aislado', () => {
       schema,
       synchronize: true,
       entities: [
+        CashSessionEntity,CashMovementEntity,FinancialCategoryEntity,FinancialEntryEntity,
         ClienteEntity,
         CreditSaleEntity,
         CustomerPaymentEntity,
@@ -97,6 +103,7 @@ integration('Venta efectivo PostgreSQL aislado', () => {
         new CustomerCreditProjector(),
         new SyncConflictService(),
       ),
+      undefined,undefined,new CashEventHandler(new SyncConflictService()),
     );
   });
   afterAll(async () => {
@@ -108,7 +115,7 @@ integration('Venta efectivo PostgreSQL aislado', () => {
   });
   beforeEach(async () => {
     await db.query(
-      `TRUNCATE "${schema}".events, "${schema}".clientes, "${schema}".products, "${schema}".inventory_items, "${schema}".units, "${schema}".sales, "${schema}".sync_conflicts CASCADE`,
+      `TRUNCATE "${schema}".cash_sessions, "${schema}".events, "${schema}".clientes, "${schema}".products, "${schema}".inventory_items, "${schema}".units, "${schema}".sales, "${schema}".sync_conflicts CASCADE`,
     );
     productId = randomUUID();
     variantId = randomUUID();
@@ -281,6 +288,21 @@ integration('Venta efectivo PostgreSQL aislado', () => {
     });
     return e;
   }
+  it('caja: sale_payment aplicado sin cambio y abono real, corte por movimientos',async()=>{
+    const opening:PushEventDto={event_id:randomUUID(),aggregate_id:randomUUID(),aggregate_type:'cash_session',event_type:'caja_abierta',device_id:'tablet',user_id:'user',created_at_local:new Date().toISOString(),base_version:1,payload:{opening_minor:1000,opened_at_ms:Date.now()}};
+    expect((await push(opening)).status).toBe('accepted');
+    const binding=()=>({session_id:opening.aggregate_id,opening_event_id:opening.event_id,movement_id:randomUUID()});
+    const e=sale();e.payload.cash=binding();
+    expect((await push(e)).status).toBe('accepted');
+    const c=await customer();const abono=payment(c,2000,Date.now());abono.payload.cash=binding();
+    expect((await push(abono)).status).toBe('accepted');expect((await push(abono)).status).toBe('duplicate');
+    const rows=await db.manager.findBy(CashMovementEntity,{sessionId:opening.aggregate_id});expect(rows).toHaveLength(2);
+    expect(rows.find(r=>r.salePaymentId===e.payload.payment_id)!.amountMinor).toBe('10000');expect(rows.find(r=>r.customerPaymentId===abono.aggregate_id)!.amountMinor).toBe('2000');
+    const cashHandler=new CashEventHandler(new SyncConflictService());
+    const closing={...opening,event_id:randomUUID(),event_type:'caja_cerrada',payload:{opening_event_id:opening.event_id,closed_at_ms:Date.now(),counted_minor:13000,income_minor:'12000',expense_minor:'0',expected_minor:'13000',difference_minor:'0',movements:rows.map(r=>cashHandler.evidence(r).toJson())}};
+    expect((await push(closing)).status).toBe('accepted');
+    expect((await db.manager.findOneByOrFail(CashSessionEntity,{id:opening.aggregate_id})).expectedMinor).toBe('13000');
+  });
   it.each([undefined, null, '', '   ', '  REF-BANK  ', 'x'.repeat(500)])(
     'transferencia conserva referencia %s durante reintento y pull',
     async (reference) => {

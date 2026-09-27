@@ -1,3 +1,4 @@
+import { CashBindingPayload } from './cash-binding.payload';
 import { requiredUuidV4 } from './inventory-movement.payload';
 export class AbonoClienteRegistradoPayload {
   static readonly aggregateType = 'customer_payment';
@@ -9,6 +10,7 @@ export class AbonoClienteRegistradoPayload {
     readonly method: string,
     readonly reference: string | null,
     readonly occurredAtMs: number,
+    readonly cash: CashBindingPayload | null,
   ) {}
   static fromJson(j: Record<string, unknown>): AbonoClienteRegistradoPayload {
     if (
@@ -31,10 +33,12 @@ export class AbonoClienteRegistradoPayload {
       j.method as string,
       reference,
       j.occurred_at_ms as number,
+      CashBindingPayload.optional(j.cash,j.method as string,j.amount_minor as number),
     );
   }
   toJson(): Record<string, unknown> {
     return {
+      ...(this.cash ? {cash:this.cash.toJson()} : {}),
       cliente_id: this.clienteId,
       cliente_event_id: this.clienteEventId,
       amount_minor: this.amountMinor,

@@ -1,6 +1,7 @@
 import type { EventSyncStatus } from '../../enums/event-sync-status.enum';
 
 export type PushEventResultStatus =
+  | 'pending'
   | 'accepted'
   | 'duplicate'
   | 'rejected'

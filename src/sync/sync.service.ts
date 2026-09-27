@@ -1,5 +1,14 @@
+import { cashDuplicateMatches } from './payloads/cash-event-identity';
+import { CashOperationPayload } from './payloads/cash-operation.payload';
+import { CashEventHandler } from './cash-event.handler';
+import { CajaAbiertaPayload } from './payloads/caja-abierta.payload';
+import { CajaCerradaPayload } from './payloads/caja-cerrada.payload';
 import { AbonoClienteEventHandler } from './abono-cliente-event.handler';
 import { AbonoClienteRegistradoPayload } from './payloads/abono-cliente-registrado.payload';
+import { FinancialCategoryEventHandler } from './financial-category-event.handler';
+import { FinancialEntryEventHandler } from './financial-entry-event.handler';
+import { CategoriaFinancieraCreadaPayload } from './payloads/categoria-financiera-creada.payload';
+import { MovimientoFinancieroRegistradoPayload } from './payloads/movimiento-financiero-registrado.payload';
 import { VentaConfirmadaPayload } from './payloads/venta-confirmada.payload';
 import { ClienteEventHandler } from './cliente-event.handler';
 import { ClienteCreadoPayload } from './payloads/cliente-creado.payload';
@@ -107,6 +116,11 @@ export class SyncService {
     @Optional() private readonly clienteEventHandler?: ClienteEventHandler,
     @Optional()
     private readonly abonoClienteEventHandler?: AbonoClienteEventHandler,
+    @Optional()
+    private readonly financialCategoryEventHandler?: FinancialCategoryEventHandler,
+    @Optional()
+    private readonly financialEntryEventHandler?: FinancialEntryEventHandler,
+    @Optional() private readonly cashEventHandler?: CashEventHandler,
   ) {}
 
   async health(): Promise<SyncHealthResponseDto> {
@@ -335,6 +349,7 @@ export class SyncService {
       .findOneBy({ eventId: event.event_id });
 
     if (duplicate) {
+      if(!cashDuplicateMatches(event,duplicate)) return this.rejectedResult(event.event_id,'El event_id ya existe con otro contenido.');
       return this.toResult(
         duplicate,
         'duplicate',
@@ -348,6 +363,7 @@ export class SyncService {
       return this.rejectedResult(event.event_id, validationError);
     }
 
+    const isCashEvent = this.cashEventHandler?.supports(event.event_type) ?? false;
     const isPaymentEvent =
       this.abonoClienteEventHandler?.supports(event.event_type) ?? false;
     const isClienteEvent =
@@ -360,6 +376,10 @@ export class SyncService {
       this.productoEventHandler?.supports(event.event_type) ?? false;
     const isInventoryEvent =
       this.inventoryEventHandler?.supports(event.event_type) ?? false;
+    const isFinancialCategoryEvent =
+      this.financialCategoryEventHandler?.supports(event.event_type) ?? false;
+    const isFinancialEntryEvent =
+      this.financialEntryEventHandler?.supports(event.event_type) ?? false;
     if (
       event.event_type !== 'espacio_creado' &&
       !isCategoryEvent &&
@@ -367,7 +387,10 @@ export class SyncService {
       !isInventoryEvent &&
       !isSaleEvent &&
       !isClienteEvent &&
-      !isPaymentEvent
+      !isPaymentEvent &&
+      !isFinancialCategoryEvent &&
+      !isFinancialEntryEvent &&
+      !isCashEvent
     ) {
       return this.rejectedResult(
         event.event_id,
@@ -396,9 +419,30 @@ export class SyncService {
         'No está registrado el handler de eventos de inventario.',
       );
     }
+    if (
+      event.aggregate_type === CategoriaFinancieraCreadaPayload.aggregateType &&
+      !this.financialCategoryEventHandler
+    ) {
+      return this.rejectedResult(
+        event.event_id,
+        'No está registrado el handler de eventos de categoría financiera.',
+      );
+    }
+    if (
+      event.aggregate_type ===
+        MovimientoFinancieroRegistradoPayload.aggregateType &&
+      !this.financialEntryEventHandler
+    ) {
+      return this.rejectedResult(
+        event.event_id,
+        'No está registrado el handler de eventos de registro financiero.',
+      );
+    }
 
     try {
       return await this.dataSource.transaction((manager) => {
+        if (isCashEvent) return this.cashEventHandler!.apply(manager,event);
+        const applyOperation = () => {
         if (isPaymentEvent)
           return this.abonoClienteEventHandler!.apply(manager, event);
         if (isClienteEvent)
@@ -413,7 +457,15 @@ export class SyncService {
         if (isInventoryEvent) {
           return this.inventoryEventHandler!.apply(manager, event);
         }
+        if (isFinancialCategoryEvent) {
+          return this.financialCategoryEventHandler!.apply(manager, event);
+        }
+        if (isFinancialEntryEvent) {
+          return this.financialEntryEventHandler!.apply(manager, event);
+        }
         return this.applyEspacioCreado(manager, event);
+        };
+        return this.cashEventHandler ? this.cashEventHandler.operation(manager,event,applyOperation) : applyOperation();
       });
     } catch (error) {
       if (!this.isUniqueViolation(error)) throw error;
@@ -423,6 +475,7 @@ export class SyncService {
         .findOneBy({ eventId: event.event_id });
 
       if (duplicateAfterRace) {
+        if(!cashDuplicateMatches(event,duplicateAfterRace)) return this.rejectedResult(event.event_id,'El event_id ya existe con otro contenido.');
         return this.toResult(
           duplicateAfterRace,
           'duplicate',
@@ -431,6 +484,7 @@ export class SyncService {
         );
       }
 
+      if (this.cashEventHandler && (isCashEvent || CashOperationPayload.fromEvent(event)!=null)) return this.dataSource.transaction(manager=>this.cashEventHandler!.conflict(manager,event,'Identidad de caja o movimiento ya utilizada.',isCashEvent?event.aggregate_id:CashOperationPayload.fromEvent(event)!.cash.sessionId));
       if (isPaymentEvent)
         return this.dataSource.transaction((manager) =>
           this.abonoClienteEventHandler!.saveUniqueViolationConflict(
@@ -464,6 +518,22 @@ export class SyncService {
       if (isInventoryEvent) {
         return this.dataSource.transaction((manager) =>
           this.inventoryEventHandler!.saveUniqueViolationConflict(
+            manager,
+            event,
+          ),
+        );
+      }
+      if (isFinancialCategoryEvent) {
+        return this.dataSource.transaction((manager) =>
+          this.financialCategoryEventHandler!.saveUniqueViolationConflict(
+            manager,
+            event,
+          ),
+        );
+      }
+      if (isFinancialEntryEvent) {
+        return this.dataSource.transaction((manager) =>
+          this.financialEntryEventHandler!.saveUniqueViolationConflict(
             manager,
             event,
           ),
@@ -506,6 +576,10 @@ export class SyncService {
 
     if (
       event.event_type !== 'espacio_creado' &&
+      event.event_type !== CajaAbiertaPayload.eventType &&
+      event.event_type !== CajaCerradaPayload.eventType &&
+      event.event_type !== CategoriaFinancieraCreadaPayload.eventType &&
+      event.event_type !== MovimientoFinancieroRegistradoPayload.eventType &&
       event.event_type !== ClienteCreadoPayload.eventType &&
       event.event_type !== ClienteActualizadoPayload.eventType &&
       event.event_type !== AbonoClienteRegistradoPayload.eventType &&
@@ -967,6 +1041,19 @@ export class SyncService {
       event.aggregate_type !== RecursoInventarioCreadoPayload.aggregateType
     ) {
       return `${event.event_type} debe usar aggregate_type inventory_item.`;
+    }
+    if (
+      event.event_type === CategoriaFinancieraCreadaPayload.eventType &&
+      event.aggregate_type !== CategoriaFinancieraCreadaPayload.aggregateType
+    ) {
+      return 'Sobre de categoría financiera inválido.';
+    }
+    if (
+      event.event_type === MovimientoFinancieroRegistradoPayload.eventType &&
+      event.aggregate_type !==
+        MovimientoFinancieroRegistradoPayload.aggregateType
+    ) {
+      return 'Sobre de registro financiero inválido.';
     }
 
     return null;

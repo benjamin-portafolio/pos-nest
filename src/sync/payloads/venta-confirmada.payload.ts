@@ -1,3 +1,4 @@
+import { CashBindingPayload } from './cash-binding.payload';
 import { requiredRecord, requiredUuidV4 } from './inventory-movement.payload';
 
 export interface SaleSnapshot {
@@ -187,6 +188,7 @@ export class VentaConfirmadaPayload {
     readonly clienteNombre: string | null,
     readonly occurredAtMs: number | null,
     readonly paymentReference: string | null,
+    readonly cash: CashBindingPayload | null,
   ) {}
   static fromJson(j: Record<string, unknown>): VentaConfirmadaPayload {
     if (
@@ -230,6 +232,8 @@ export class VentaConfirmadaPayload {
     const dependencies = j.dependency_event_ids.map((v) =>
       requiredUuidV4(v, 'dependency'),
     );
+    const cash = CashBindingPayload.optional(j.cash, j.payment_method as string, integer(j.total_minor));
+    if (cash && !dependencies.includes(cash.openingEventId)) dependencies.push(cash.openingEventId);
     const total = integer(j.total_minor),
       received = integer(j.received_minor),
       change = integer(j.change_minor);
@@ -263,10 +267,12 @@ export class VentaConfirmadaPayload {
       clienteNombre as string | null,
       credit ? (j.occurred_at_ms as number) : null,
       reference,
+      CashBindingPayload.optional(j.cash, j.payment_method as string, total),
     );
   }
   toJson(): Record<string, unknown> {
     return {
+      ...(this.cash ? {cash:this.cash.toJson()} : {}),
       payment_id: this.paymentId,
       payment_method: this.paymentMethod,
       ...(this.paymentReference != null
