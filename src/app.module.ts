@@ -14,6 +14,8 @@ import { VentaEventHandler } from './sync/venta-event.handler';
 import { CashSessionEntity } from './entities/cash-session.entity';
 import { CashMovementEntity } from './entities/cash-movement.entity';
 import { CashEventHandler } from './sync/cash-event.handler';
+import { AccountBalanceBaselineEntity } from './entities/account-balance-baseline.entity';
+import { AccountBalanceBaselineEventHandler } from './sync/account-balance-baseline-event.handler';
 import { Module } from '@nestjs/common';
 import { AppController } from './app.controller';
 import { AppService } from './app.service';
@@ -85,6 +87,7 @@ import { FinancialReportController } from './reports/financial-report.controller
           FinancialEntryEntity,
           CashSessionEntity,
           CashMovementEntity,
+          AccountBalanceBaselineEntity,
         ],
         autoLoadEntities: true,
       }),
@@ -98,6 +101,7 @@ import { FinancialReportController } from './reports/financial-report.controller
   ],
   providers: [
     CashEventHandler,
+    AccountBalanceBaselineEventHandler,
     CollectionsReportService,
     FinancialReportService,
     CustomerCreditProjector,

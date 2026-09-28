@@ -1,6 +1,7 @@
 import { cashDuplicateMatches } from './payloads/cash-event-identity';
 import { CashOperationPayload } from './payloads/cash-operation.payload';
 import { CashEventHandler } from './cash-event.handler';
+import { AccountBalanceBaselineEventHandler } from './account-balance-baseline-event.handler';
 import { CajaAbiertaPayload } from './payloads/caja-abierta.payload';
 import { CajaCerradaPayload } from './payloads/caja-cerrada.payload';
 import { AbonoClienteEventHandler } from './abono-cliente-event.handler';
@@ -121,6 +122,8 @@ export class SyncService {
     @Optional()
     private readonly financialEntryEventHandler?: FinancialEntryEventHandler,
     @Optional() private readonly cashEventHandler?: CashEventHandler,
+    @Optional()
+    private readonly accountBalanceBaselineEventHandler?: AccountBalanceBaselineEventHandler,
   ) {}
 
   async health(): Promise<SyncHealthResponseDto> {
@@ -380,6 +383,9 @@ export class SyncService {
       this.financialCategoryEventHandler?.supports(event.event_type) ?? false;
     const isFinancialEntryEvent =
       this.financialEntryEventHandler?.supports(event.event_type) ?? false;
+    const isBankBalanceEvent =
+      this.accountBalanceBaselineEventHandler?.supports(event.event_type) ??
+      false;
     if (
       event.event_type !== 'espacio_creado' &&
       !isCategoryEvent &&
@@ -390,6 +396,7 @@ export class SyncService {
       !isPaymentEvent &&
       !isFinancialCategoryEvent &&
       !isFinancialEntryEvent &&
+      !isBankBalanceEvent &&
       !isCashEvent
     ) {
       return this.rejectedResult(
@@ -463,6 +470,9 @@ export class SyncService {
         if (isFinancialEntryEvent) {
           return this.financialEntryEventHandler!.apply(manager, event);
         }
+        if (isBankBalanceEvent) {
+          return this.accountBalanceBaselineEventHandler!.apply(manager, event);
+        }
         return this.applyEspacioCreado(manager, event);
         };
         return this.cashEventHandler ? this.cashEventHandler.operation(manager,event,applyOperation) : applyOperation();
@@ -534,6 +544,15 @@ export class SyncService {
       if (isFinancialEntryEvent) {
         return this.dataSource.transaction((manager) =>
           this.financialEntryEventHandler!.saveUniqueViolationConflict(
+            manager,
+            event,
+          ),
+        );
+      }
+
+      if (isBankBalanceEvent) {
+        return this.dataSource.transaction((manager) =>
+          this.accountBalanceBaselineEventHandler!.saveUniqueViolationConflict(
             manager,
             event,
           ),

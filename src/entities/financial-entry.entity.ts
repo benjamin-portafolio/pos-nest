@@ -70,7 +70,13 @@ export class FinancialEntryEntity extends SyncProjectionEntity {
   @Column({ type: 'varchar', length: 3 })
   currency: string;
 
-  /** Medio cash/transfer; transfer nunca implica saldo de un cajón. */
+  /**
+   * Medio cash/transfer.
+   *
+   * En el cajón no implica nada: `cash-event.handler.ts:75` rechaza que un
+   * origen `transfer` genere movimiento de caja. En la cuenta bancaria sí tiene
+   * consecuencia, porque alimenta el saldo estimado. Son dos cosas distintas.
+   */
   @Column('text')
   method: string;
 

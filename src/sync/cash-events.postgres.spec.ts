@@ -28,7 +28,7 @@ integration('Caja PostgreSQL temporal, transacciones y causalidad',()=>{
   service=new SyncService(db,{notifyEventsAvailable:jest.fn()} as unknown as EventsGateway,new SyncConflictService(),undefined,undefined,undefined,undefined,undefined,undefined,new FinancialCategoryEventHandler(new SyncConflictService()),new FinancialEntryEventHandler(new SyncConflictService()),handler);
  });
  afterAll(async()=>{if(db?.isInitialized) await db.destroy();});
- beforeEach(async()=>{ await db.query('TRUNCATE cash_movements,cash_sessions,financial_entries,financial_categories,events,event_refs,sync_conflicts,sync_conflict_participants CASCADE'); });
+ beforeEach(async()=>{ await db.query('TRUNCATE account_balance_baselines,cash_movements,cash_sessions,financial_entries,financial_categories,events,event_refs,sync_conflicts,sync_conflict_participants CASCADE'); });
  function event(type:string,id:string,payload:Record<string,unknown>,writer=device):PushEventDto{return {event_id:randomUUID(),aggregate_type:type.startsWith('caja_')?'cash_session':type==='categoria_financiera_creada'?'financial_category':'financial_entry',aggregate_id:id,event_type:type,device_id:writer,user_id:'cash-user',created_at_local:new Date().toISOString(),base_version:1,payload};}
  const push=async(e:PushEventDto)=>(await service.pushEvents({device_id:e.device_id,events:[e]})).results[0];
  async function open(previous:string|null=null){const e=event('caja_abierta',randomUUID(),{opening_minor:10000,opened_at_ms:Date.now(),previous_close_event_id:previous});expect((await push(e)).status).toBe('accepted');return e;}
