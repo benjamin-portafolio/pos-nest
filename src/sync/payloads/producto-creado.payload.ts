@@ -1,6 +1,8 @@
 import { SaleMode } from '../../enums/sale-mode.enum';
 
 const MAX_SAFE_MINOR_AMOUNT = Number.MAX_SAFE_INTEGER;
+const MAX_BARCODE_LENGTH = 32;
+const DIGITS_ONLY_PATTERN = new RegExp(`^[0-9]{1,${MAX_BARCODE_LENGTH}}$`);
 
 export type ProductoSaleConfigurationValue =
   | { mode: SaleMode.UNIT }
@@ -14,6 +16,7 @@ export interface ProductoCreadoVariantValue {
   id: string;
   name: string | null;
   nameKey: string | null;
+  barcode: string | null;
   salePriceMinor: number;
   standardCostMinor: number | null;
   inventoryItemId: string | null;
@@ -179,7 +182,7 @@ export class ProductoCreadoPayload {
         variant_id: variant.id,
         name: variant.name,
         sku: null,
-        barcode: null,
+        barcode: variant.barcode,
         sale_price_minor: variant.salePriceMinor,
         standard_cost_minor: variant.standardCostMinor,
         ...(variant.inventoryItemId === null
@@ -240,9 +243,6 @@ function parseVariant(
   if (variant.sku !== null && variant.sku !== undefined) {
     throw new Error(`${fieldName}.sku debe ser null.`);
   }
-  if (variant.barcode !== null && variant.barcode !== undefined) {
-    throw new Error(`${fieldName}.barcode debe ser null.`);
-  }
   // Compatibilidad: is_default de eventos anteriores se ignora y no se emite.
   const normalizedName = normalizeVariantName(variant.name);
   const inventoryItemId = optionalId(
@@ -262,6 +262,9 @@ function parseVariant(
     id: requiredId(variant.variant_id, `${fieldName}.variant_id`),
     name: normalizedName.name,
     nameKey: normalizedName.nameKey,
+    barcode: Object.prototype.hasOwnProperty.call(variant, 'barcode')
+      ? optionalDigits(variant.barcode, `${fieldName}.barcode`)
+      : null,
     salePriceMinor: positiveSafeInteger(
       variant.sale_price_minor,
       `${fieldName}.sale_price_minor`,
@@ -600,6 +603,21 @@ function nullableNonNegativeSafeInteger(
 ): number | null {
   if (value === null || value === undefined) return null;
   return nonNegativeSafeInteger(value, fieldName);
+}
+
+function optionalDigits(value: unknown, fieldName: string): string | null {
+  if (value === null || value === undefined) return null;
+  if (typeof value !== 'string') {
+    throw new Error(`${fieldName} debe ser string o null.`);
+  }
+  const normalized = value.trim();
+  if (normalized === '') return null;
+  if (!DIGITS_ONLY_PATTERN.test(normalized)) {
+    throw new Error(
+      `${fieldName} solo admite dígitos, hasta ${MAX_BARCODE_LENGTH}.`,
+    );
+  }
+  return normalized;
 }
 
 function optionalNonNegativeSafeInteger(

@@ -39,6 +39,10 @@ import { SyncProjectionEntity } from './sync-projection.entity';
   '("name" IS NULL) = ("name_key" IS NULL)',
 )
 @Check('ck_product_variants_sort_order', '"sort_order" >= 0')
+@Check(
+  'ck_product_variants_barcode_digits',
+  '"barcode" IS NULL OR "barcode" ~ \'^[0-9]{1,32}$\'',
+)
 export class ProductVariantEntity extends SyncProjectionEntity {
   @PrimaryColumn('uuid', {
     name: 'variant_id',
@@ -73,6 +77,16 @@ export class ProductVariantEntity extends SyncProjectionEntity {
     comment: 'Nombre NFKC en minúsculas para unicidad por producto.',
   })
   nameKey: string | null;
+
+  @Column({
+    name: 'barcode',
+    type: 'varchar',
+    length: 32,
+    nullable: true,
+    comment:
+      'Código de barras opcional; texto de hasta 32 dígitos sin interpretación numérica.',
+  })
+  barcode: string | null;
 
   @Column({
     name: 'sale_price_minor',

@@ -47,6 +47,60 @@ describe('ProductoCreadoPayload', () => {
     ]);
   });
 
+  it('acepta un barcode de dígitos y lo conserva al serializar', () => {
+    const payload = productPayload();
+    (payload.variants as Array<Record<string, unknown>>)[0].barcode =
+      '  012345678905  ';
+
+    const parsed = ProductoCreadoPayload.fromJson(payload);
+
+    expect(parsed.variants[0].barcode).toBe('012345678905');
+    expect(
+      (parsed.toJson().variants as Array<Record<string, unknown>>)[0].barcode,
+    ).toBe('012345678905');
+  });
+
+  it('trata barcode ausente o vacío como null y conserva los ceros a la izquierda', () => {
+    const absent = productPayload();
+    delete (absent.variants as Array<Record<string, unknown>>)[0].barcode;
+    expect(
+      ProductoCreadoPayload.fromJson(absent).variants[0].barcode,
+    ).toBeNull();
+
+    const blank = productPayload();
+    (blank.variants as Array<Record<string, unknown>>)[0].barcode = '   ';
+    const parsed = ProductoCreadoPayload.fromJson(blank);
+    expect(parsed.variants[0].barcode).toBeNull();
+    expect(
+      (parsed.toJson().variants as Array<Record<string, unknown>>)[0].barcode,
+    ).toBeNull();
+  });
+
+  it.each([
+    ['letras', 'ABC123'],
+    ['signo', '123-45'],
+    ['decimal', '12.5'],
+    ['guion bajo', '12_45'],
+    ['texto mixto', '7501234567890X'],
+    ['33 dígitos', '1'.repeat(33)],
+  ])('rechaza barcode con %s', (_, barcode) => {
+    const payload = productPayload();
+    (payload.variants as Array<Record<string, unknown>>)[0].barcode = barcode;
+
+    expect(() => ProductoCreadoPayload.fromJson(payload)).toThrow(
+      'solo admite dígitos',
+    );
+  });
+
+  it('sigue rechazando un sku informado', () => {
+    const payload = productPayload();
+    (payload.variants as Array<Record<string, unknown>>)[0].sku = 'SKU-1';
+
+    expect(() => ProductoCreadoPayload.fromJson(payload)).toThrow(
+      'sku debe ser null',
+    );
+  });
+
   it('acepta eventos históricos sin standard_cost_minor como null', () => {
     const payload = productPayload();
     delete (payload.variants as Array<Record<string, unknown>>)[0]

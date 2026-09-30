@@ -9,6 +9,7 @@ import { RecipeComponentEntity } from '../entities/recipe-component.entity';
 import { UnitEntity } from '../entities/unit.entity';
 import type { PushEventDto } from './dto/push-events.dto';
 import { EventSyncStatus } from '../enums/event-sync-status.enum';
+import { SaleMode } from '../enums/sale-mode.enum';
 import { ProductoEventHandler } from './producto-event.handler';
 import type { SyncConflictService } from './sync-conflict.service';
 
@@ -549,6 +550,133 @@ describe('ProductoEventHandler', () => {
     expect(result.status).toBe('accepted');
   });
 
+  it('acepta una actualización cuyo único cambio es el barcode de la variante', async () => {
+    // Regresión: `before` se compara campo por campo contra la base. Si el
+    // barcode no participa de oldValues ni de la cadena de comparación, una
+    // edición que solo toque el barcode se rechaza con "El estado anterior no
+    // coincide" y el cambio nunca llega a aplicarse.
+    const before = productPayload(null, null);
+    const after = structuredClone(before);
+    (after.variants as Array<Record<string, unknown>>)[0].barcode =
+      '012345678905';
+    const fixture = managerFixture({
+      product: Object.assign(new ProductEntity(), {
+        id: '00000000-0000-4000-8000-000000000002',
+        name: 'Café americano',
+        categoryId: null,
+        saleMode: SaleMode.UNIT,
+        saleUnitId: null,
+        priceReferenceQuantityAtomic: null,
+        active: true,
+        version: 1,
+        lastEventId: '00000000-0000-4000-8000-000000000001',
+        lastServerSequence: null,
+      }),
+      variant: Object.assign(new ProductVariantEntity(), {
+        id: '00000000-0000-4000-8000-000000000003',
+        productId: '00000000-0000-4000-8000-000000000002',
+        active: true,
+        name: null,
+        nameKey: null,
+        barcode: null,
+        salePriceMinor: '4550',
+        standardCostMinor: null,
+        inventoryItemId: null,
+        sortOrder: 0,
+        version: 1,
+        createdEventId: '00000000-0000-4000-8000-000000000001',
+      }),
+    });
+    const handler = new ProductoEventHandler(
+      {} as unknown as SyncConflictService,
+    );
+
+    const result = await handler.apply(fixture.manager, {
+      event_id: '00000000-0000-4000-8000-000000000004',
+      aggregate_type: 'product',
+      aggregate_id: '00000000-0000-4000-8000-000000000002',
+      event_type: 'producto_actualizado',
+      device_id: 'device_tablet_01',
+      user_id: 'user_01',
+      local_sequence: 2,
+      base_server_sequence: null,
+      base_version: 1,
+      created_at_local: '2026-09-29T12:00:00.000Z',
+      payload: {
+        base_event_id: '00000000-0000-4000-8000-000000000001',
+        before,
+        after,
+      },
+    });
+
+    expect(result.status).toBe('accepted');
+    expect(
+      fixture.created.find((entry) => entry.target === ProductVariantEntity)
+        ?.value,
+    ).toEqual(expect.objectContaining({ barcode: '012345678905' }));
+  });
+
+  it('rechaza una actualización cuyo before no refleja el barcode persistido', async () => {
+    const before = productPayload(null, null);
+    (before.variants as Array<Record<string, unknown>>)[0].barcode =
+      '012345678905';
+    const after = structuredClone(before);
+    (after.variants as Array<Record<string, unknown>>)[0].barcode =
+      '7501234567890';
+    const fixture = managerFixture({
+      product: Object.assign(new ProductEntity(), {
+        id: '00000000-0000-4000-8000-000000000002',
+        name: 'Café americano',
+        categoryId: null,
+        saleMode: SaleMode.UNIT,
+        saleUnitId: null,
+        priceReferenceQuantityAtomic: null,
+        active: true,
+        version: 1,
+        lastEventId: '00000000-0000-4000-8000-000000000001',
+        lastServerSequence: null,
+      }),
+      variant: Object.assign(new ProductVariantEntity(), {
+        id: '00000000-0000-4000-8000-000000000003',
+        productId: '00000000-0000-4000-8000-000000000002',
+        active: true,
+        name: null,
+        nameKey: null,
+        barcode: null,
+        salePriceMinor: '4550',
+        standardCostMinor: null,
+        inventoryItemId: null,
+        sortOrder: 0,
+        version: 1,
+        createdEventId: '00000000-0000-4000-8000-000000000001',
+      }),
+    });
+    const handler = new ProductoEventHandler(
+      {} as unknown as SyncConflictService,
+    );
+
+    const result = await handler.apply(fixture.manager, {
+      event_id: '00000000-0000-4000-8000-000000000005',
+      aggregate_type: 'product',
+      aggregate_id: '00000000-0000-4000-8000-000000000002',
+      event_type: 'producto_actualizado',
+      device_id: 'device_tablet_01',
+      user_id: 'user_01',
+      local_sequence: 2,
+      base_server_sequence: null,
+      base_version: 1,
+      created_at_local: '2026-09-29T12:00:00.000Z',
+      payload: {
+        base_event_id: '00000000-0000-4000-8000-000000000001',
+        before,
+        after,
+      },
+    });
+
+    expect(result.status).toBe('rejected');
+    expect(result.reason).toContain('El estado anterior no coincide');
+  });
+
   it('marca dependency_failed si la base local de categoría no llegó', async () => {
     const recordConflict = jest.fn().mockResolvedValue({
       conflictId: '00000000-0000-4000-8000-000000000099',
@@ -806,9 +934,35 @@ function managerFixture(
     target: EntityTarget<unknown>;
     value: Record<string, unknown>;
   }> = [];
+  const persistedVariants = [
+    ...(options.variant ? [options.variant] : []),
+    ...(options.variants ?? []),
+  ];
   let sequence = 10;
   const manager = {
-    find: jest.fn().mockResolvedValue([]),
+    // La comparación de `before` lee las variantes persistidas del producto;
+    // sin ellas, oldValues quedaría vacío y ocultaría la regresión.
+    find: jest.fn(
+      (
+        target: EntityTarget<unknown>,
+        findOptions?: {
+          where?: { productId?: string; active?: boolean; variantId?: string };
+        },
+      ): Promise<unknown[]> => {
+        if (target === ProductVariantEntity) {
+          const where = findOptions?.where ?? {};
+          return Promise.resolve(
+            persistedVariants.filter(
+              (variant) =>
+                (where.productId === undefined ||
+                  variant.productId === where.productId) &&
+                (where.active === undefined || variant.active === where.active),
+            ),
+          );
+        }
+        return Promise.resolve([]);
+      },
+    ),
     findOne: jest.fn(
       (
         target: EntityTarget<unknown>,
@@ -825,13 +979,9 @@ function managerFixture(
           return Promise.resolve(options.product ?? null);
         }
         if (target === ProductVariantEntity) {
-          const variants = [
-            ...(options.variant ? [options.variant] : []),
-            ...(options.variants ?? []),
-          ];
           const where = findOptions?.where;
           return Promise.resolve(
-            variants.find(
+            persistedVariants.find(
               (variant) =>
                 (where?.id === undefined || variant.id === where.id) &&
                 (where?.productId === undefined ||
@@ -873,24 +1023,17 @@ function managerFixture(
           return Promise.resolve(options.baseEventRef);
         }
         if (target === ProductVariantEntity && typeof where.id === 'string') {
-          const variants = [
-            ...(options.variant ? [options.variant] : []),
-            ...(options.variants ?? []),
-          ];
           return Promise.resolve(
-            variants.find((variant) => variant.id === where.id) ?? null,
+            persistedVariants.find((variant) => variant.id === where.id) ??
+              null,
           );
         }
         if (
           target === ProductVariantEntity &&
           typeof where.inventoryItemId === 'string'
         ) {
-          const variants = [
-            ...(options.variant ? [options.variant] : []),
-            ...(options.variants ?? []),
-          ];
           return Promise.resolve(
-            variants.find(
+            persistedVariants.find(
               (variant) => variant.inventoryItemId === where.inventoryItemId,
             ) ?? null,
           );
@@ -911,6 +1054,8 @@ function managerFixture(
       },
     ),
     save: jest.fn((value: unknown) => Promise.resolve(value)),
+    update: jest.fn().mockResolvedValue(undefined),
+    delete: jest.fn().mockResolvedValue(undefined),
   } as unknown as EntityManager;
   return { manager, created };
 }

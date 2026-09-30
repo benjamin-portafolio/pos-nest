@@ -129,6 +129,7 @@ export class ProductoEventHandler {
           id: variant.id,
           name: variant.name,
           name_key: variant.nameKey,
+          barcode: variant.barcode,
           sale_price_minor: Number(variant.salePriceMinor),
           standard_cost_minor:
             variant.standardCostMinor === null
@@ -156,6 +157,7 @@ export class ProductoEventHandler {
             v.id !== old.id ||
             v.name !== old.name ||
             v.nameKey !== old.name_key ||
+            v.barcode !== old.barcode ||
             v.salePriceMinor !== old.sale_price_minor ||
             v.standardCostMinor !== old.standard_cost_minor ||
             v.inventoryItemId !== old.inventory_item_id ||
@@ -536,6 +538,7 @@ export class ProductoEventHandler {
             createdEventId: previousVariant?.createdEventId ?? event.event_id,
             name: variant.name,
             nameKey: variant.nameKey,
+            barcode: variant.barcode,
             salePriceMinor: String(variant.salePriceMinor),
             standardCostMinor:
               variant.standardCostMinor === null
@@ -589,6 +592,7 @@ export class ProductoEventHandler {
             productId: product.id,
             name: variant.name,
             nameKey: variant.nameKey,
+            barcode: variant.barcode,
             salePriceMinor: String(variant.salePriceMinor),
             standardCostMinor:
               variant.standardCostMinor === null
