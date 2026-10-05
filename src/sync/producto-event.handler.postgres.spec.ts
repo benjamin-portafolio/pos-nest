@@ -13,6 +13,7 @@ import { ProductVariantEntity } from '../entities/product-variant.entity';
 import { ProductEntity } from '../entities/product.entity';
 import { RecipeComponentEntity } from '../entities/recipe-component.entity';
 import { UnitEntity } from '../entities/unit.entity';
+import { VariantInventoryMemoryEntity } from '../entities/variant-inventory-memory.entity';
 import { SaleMode } from '../enums/sale-mode.enum';
 import type { PushEventDto } from './dto/push-events.dto';
 import { ProductoEventHandler } from './producto-event.handler';
@@ -59,6 +60,7 @@ runPostgresIntegration('ProductoEventHandler con PostgreSQL real', () => {
         ProductEntity,
         ProductVariantEntity,
         RecipeComponentEntity,
+        VariantInventoryMemoryEntity,
       ],
       synchronize: true,
     });

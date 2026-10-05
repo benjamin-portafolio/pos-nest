@@ -127,6 +127,8 @@ export class InventoryEventHandler {
     );
 
     if (existingItem) {
+      // Reaplicación del mismo alta: se conserva la procedencia ya persistida.
+      // Un replay es idempotente y jamás reescribe `origin_variant_id`.
       existingItem.lastServerSequence = savedEvent.serverSequence;
       await manager.save(existingItem);
       await manager.update(
@@ -146,6 +148,13 @@ export class InventoryEventHandler {
         id: event.aggregate_id,
         defaultUnitId: payload.defaultUnitId,
         name: payload.name,
+        // Procedencia del recurso (contrato rev. 1 §5.1). Solo este evento la
+        // establece; `recurso_inventario_actualizado` y
+        // `movimiento_inventario_registrado` nunca la tocan. `null` significa
+        // desconocido: recurso independiente o alta legada, y no autoriza ningún
+        // descarte. No se inventa procedencia a partir del nombre ni de la
+        // variante más cercana.
+        originVariantId: payload.originVariantId,
         active: true,
         version: 1,
         createdEventId: event.event_id,
@@ -244,6 +253,8 @@ export class InventoryEventHandler {
       savedEvent.serverSequence,
     );
     item.name = payload.nextName;
+    // La edición de nombre nunca cambia procedencia ni unidad: son inmutables
+    // después del alta (contrato rev. 1 §5.1).
     item.version += 1;
     item.lastEventId = event.event_id;
     item.lastServerSequence = savedEvent.serverSequence;
@@ -400,6 +411,8 @@ export class InventoryEventHandler {
     balance.version += 1;
     balance.lastEventId = event.event_id;
     balance.lastServerSequence = savedEvent.serverSequence;
+    // El movimiento no modifica la procedencia ni la unidad del recurso: el
+    // stock pertenece al recurso, no a la variante que lo originó.
     item.version += 1;
     item.lastEventId = event.event_id;
     item.lastServerSequence = savedEvent.serverSequence;

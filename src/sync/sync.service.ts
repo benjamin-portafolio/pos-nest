@@ -63,6 +63,7 @@ import { CategoriaEliminadaPayload } from './payloads/categoria-eliminada.payloa
 import { SyncConflictService } from './sync-conflict.service';
 import { RecursoInventarioCreadoPayload } from './payloads/recurso-inventario-creado.payload';
 import { RecursoInventarioActualizadoPayload } from './payloads/recurso-inventario-actualizado.payload';
+import { RecursoInventarioDescartadoPayload } from './payloads/recurso-inventario-descartado.payload';
 import { MovimientoInventarioRegistradoPayload } from './payloads/movimiento-inventario-registrado.payload';
 
 interface EspacioCreadoPayload {
@@ -1020,6 +1021,18 @@ export class SyncService {
     if (!event.created_at_local) return 'created_at_local es obligatorio.';
     if (!event.payload || typeof event.payload !== 'object') {
       return 'payload debe ser un objeto.';
+    }
+    // Contrato rev. 1 §6.3: el descarte es un evento de `standalone`, emitido
+    // con `delivery_status = not_required`. El servidor no lo registra como
+    // emisor ni como evento aplicable, así que se rechaza de forma funcional
+    // antes de abrir transacción: no se borra recurso, balance, movimientos ni
+    // memoria, y al no persistirse tampoco se distribuye por pull. No existe
+    // conversión automática del historial standalone para enviarlo.
+    if (event.event_type === RecursoInventarioDescartadoPayload.eventType) {
+      return (
+        `${RecursoInventarioDescartadoPayload.eventType} es un evento de ` +
+        'descarte local: el servidor lo rechaza y no lo aplica.'
+      );
     }
     if (requestDeviceId && requestDeviceId !== event.device_id) {
       return 'device_id del request no coincide con el evento.';

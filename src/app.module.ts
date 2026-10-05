@@ -42,6 +42,7 @@ import { InventoryBalanceEntity } from './entities/inventory-balance.entity';
 import { InventoryMovementEntity } from './entities/inventory-movement.entity';
 import { InventoryUnitSeedService } from './inventory/inventory-unit-seed.service';
 import { RecipeComponentEntity } from './entities/recipe-component.entity';
+import { VariantInventoryMemoryEntity } from './entities/variant-inventory-memory.entity';
 import { FinancialCategoryEntity } from './entities/financial-category.entity';
 import { FinancialEntryEntity } from './entities/financial-entry.entity';
 import { FinancialCategoryEventHandler } from './sync/financial-category-event.handler';
@@ -83,6 +84,7 @@ import { FinancialReportController } from './reports/financial-report.controller
           InventoryBalanceEntity,
           InventoryMovementEntity,
           RecipeComponentEntity,
+          VariantInventoryMemoryEntity,
           FinancialCategoryEntity,
           FinancialEntryEntity,
           CashSessionEntity,

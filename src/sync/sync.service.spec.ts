@@ -6,6 +6,8 @@ import type { CategoriaEventHandler } from './categoria-event.handler';
 import type { ProductoEventHandler } from './producto-event.handler';
 import type { InventoryEventHandler } from './inventory-event.handler';
 import type { SyncConflictService } from './sync-conflict.service';
+import type { PushEventDto } from './dto/push-events.dto';
+import { readVariantTrackingFixture } from '../testing/variant-tracking-fixtures';
 import { SyncService } from './sync.service';
 
 type EspacioPayloadParser = {
@@ -539,6 +541,52 @@ describe('SyncService', () => {
       );
     });
 
+    it('rechaza recurso_inventario_descartado sin abrir transacción', async () => {
+      const transaction = jest.fn();
+      const dataSource = {
+        getRepository: jest.fn().mockReturnValue({
+          findOneBy: jest.fn().mockResolvedValue(null),
+        }),
+        transaction,
+      } as unknown as DataSource;
+      const notifyEventsAvailable = jest.fn();
+      const inventoryHandler = {
+        supports: jest.fn(
+          (eventType: string) => eventType === 'recurso_inventario_creado',
+        ),
+        apply: jest.fn(),
+        saveUniqueViolationConflict: jest.fn(),
+      } as unknown as InventoryEventHandler;
+      const pushService = new SyncService(
+        dataSource,
+        { notifyEventsAvailable } as unknown as EventsGateway,
+        conflictService,
+        undefined,
+        undefined,
+        inventoryHandler,
+      );
+
+      const response = await pushService.pushEvents({
+        device_id: 'dispositivo-1',
+        events: [descarteEvent()],
+      });
+
+      expect(response.results[0]).toEqual({
+        event_id: 'b3000000-0000-4000-8000-000000000006',
+        status: 'rejected',
+        server_sequence: null,
+        created_at_server: null,
+        reason:
+          'recurso_inventario_descartado es un evento de descarte local: ' +
+          'el servidor lo rechaza y no lo aplica.',
+      });
+      // Nada se persiste ni se aplica: el descarte es un evento local.
+      expect(transaction).not.toHaveBeenCalled();
+      expect(inventoryHandler.apply).not.toHaveBeenCalled();
+      expect(inventoryHandler.supports).not.toHaveBeenCalled();
+      expect(notifyEventsAvailable).not.toHaveBeenCalled();
+    });
+
     it('informa original_sync_status cuando el duplicado era conflictivo', async () => {
       const duplicate = eventRecord({
         eventId: 'event_conflict',
@@ -718,6 +766,16 @@ describe('SyncService', () => {
     });
   });
 });
+
+/**
+ * Sobre de descarte tomado del fixture compartido del contrato rev. 1: es la
+ * forma exacta que `standalone` emitiría y que el servidor debe rechazar.
+ */
+function descarteEvent(): PushEventDto {
+  return readVariantTrackingFixture(
+    'descarte/sobre-descarte-valido.json',
+  ) as unknown as PushEventDto;
+}
 
 function eventRecord({
   eventId,

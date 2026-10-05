@@ -16,6 +16,9 @@ describe('InventoryEventHandler', () => {
     );
     expect(handler.supports('recurso_inventario_creado')).toBe(true);
     expect(handler.supports('existencia_inventario_ajustada')).toBe(false);
+    // El descarte es un evento de `standalone` (contrato rev. 1 §6.3): el
+    // servidor no lo aplica, así que ningún handler debe declararlo.
+    expect(handler.supports('recurso_inventario_descartado')).toBe(false);
   });
 
   it.each([250, -250])(

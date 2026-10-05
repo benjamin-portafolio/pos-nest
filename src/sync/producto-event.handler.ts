@@ -10,6 +10,7 @@ import { ProductVariantEntity } from '../entities/product-variant.entity';
 import { ProductEntity } from '../entities/product.entity';
 import { RecipeComponentEntity } from '../entities/recipe-component.entity';
 import { UnitEntity } from '../entities/unit.entity';
+import { VariantInventoryMemoryEntity } from '../entities/variant-inventory-memory.entity';
 import { EventSyncStatus } from '../enums/event-sync-status.enum';
 import { SaleMode } from '../enums/sale-mode.enum';
 import type { PushEventDto, PushEventResultDto } from './dto/push-events.dto';
@@ -423,6 +424,10 @@ export class ProductoEventHandler {
     for (const variant of nextVariants) {
       if (!variant.inventoryItemId) continue;
       const item = inventoryItems.get(variant.inventoryItemId)!;
+      const originError = this.validateOriginCoherence(variant.id, item);
+      if (originError) {
+        return this.saveRejectedEvent(manager, event, originError);
+      }
       const inventoryUnit = await manager.findOne(UnitEntity, {
         where: { unitId: item.defaultUnitId },
         lock: { mode: 'pessimistic_read' },
@@ -481,6 +486,8 @@ export class ProductoEventHandler {
             lastServerSequence: savedEvent.serverSequence,
           },
         );
+        // La desactivación del producto no es una desvinculación: las variantes
+        // conservan su vínculo y su memoria (contrato rev. 1 §4).
         return this.toResult(savedEvent, 'accepted');
       }
       existingProduct.active = true;
@@ -622,7 +629,138 @@ export class ProductoEventHandler {
       }
     }
 
+    await this.maintainVariantInventoryMemory(
+      manager,
+      event,
+      payload,
+      update,
+      existingVariants,
+      savedEvent.serverSequence,
+    );
+
     return this.toResult(savedEvent, 'accepted');
+  }
+
+  /**
+   * Memoria de variante (contrato rev. 1 §5.2), mantenida dentro de la misma
+   * transacción y bajo el lock de producto que ya serializa la configuración.
+   *
+   * Es una proyección derivada: no reserva stock, no habilita consumo y no
+   * depende del reloj. Para cada variante se recuerda **el último recurso
+   * directo conocido**, tomando el vínculo del estado persistido anterior
+   * (`existingVariants`, leído bajo `pessimistic_write`) y no el `before` que
+   * propone el cliente: la desvinculación real es la fila persistida.
+   *
+   * - Vínculo nuevo o recuperado: la memoria apunta al recurso del `after` y se
+   *   acredita con este evento.
+   * - Vínculo mantenido: la memoria existente se conserva, sin avanzar su
+   *   secuencia, para que una edición de nombre, precio o receta no mueva el
+   *   recurso recordado.
+   * - Desvinculación, incluida la retirada de la variante: se asegura primero
+   *   una memoria del vínculo anterior y se conserva. El recurso, su balance y
+   *   sus movimientos nunca se borran aquí (contrato rev. 1 §4, `server_sync`).
+   *
+   * Un eco con base vieja se resuelve antes como conflicto, así que esta
+   * escritura nunca retrocede una memoria establecida por una edición posterior.
+   */
+  private async maintainVariantInventoryMemory(
+    manager: EntityManager,
+    event: PushEventDto,
+    payload: ProductoCreadoPayload,
+    update: ProductoActualizadoPayload | null,
+    previousVariants: readonly ProductVariantEntity[],
+    serverSequence: string,
+  ): Promise<void> {
+    // Desactivar el producto no desvincula: se conservan vínculo y memoria.
+    if (update?.deleteProduct) return;
+
+    const previousLinks = new Map(
+      previousVariants.map((variant) => [
+        variant.id,
+        variant.inventoryItemId ?? null,
+      ]),
+    );
+    const nextLinks = new Map(
+      payload.variants.map((variant) => [variant.id, variant.inventoryItemId]),
+    );
+
+    for (const variantId of new Set([
+      ...previousLinks.keys(),
+      ...nextLinks.keys(),
+    ])) {
+      const remembered =
+        nextLinks.get(variantId) ?? previousLinks.get(variantId) ?? null;
+      if (remembered === null) continue;
+      await this.upsertVariantInventoryMemory(
+        manager,
+        variantId,
+        remembered,
+        event.event_id,
+        serverSequence,
+      );
+    }
+  }
+
+  /**
+   * Escribe la memoria solo cuando corresponde: si la fila ya apunta al mismo
+   * recurso se conserva intacta (mismo origen, secuencia y acreditación
+   * anterior); si apunta a otro, la reemplaza y la acredita con el evento
+   * actual, que es el que deja vigente la configuración.
+   */
+  private async upsertVariantInventoryMemory(
+    manager: EntityManager,
+    variantId: string,
+    inventoryItemId: string,
+    sourceEventId: string,
+    sourceServerSequence: string,
+  ): Promise<void> {
+    const existing = await manager.findOneBy(VariantInventoryMemoryEntity, {
+      variantId,
+    });
+    if (!existing) {
+      await manager.save(
+        manager.create(VariantInventoryMemoryEntity, {
+          variantId,
+          inventoryItemId,
+          sourceEventId,
+          sourceServerSequence,
+        }),
+      );
+      return;
+    }
+    if (existing.inventoryItemId === inventoryItemId) return;
+    await manager.update(
+      VariantInventoryMemoryEntity,
+      { variantId },
+      { inventoryItemId, sourceEventId, sourceServerSequence },
+    );
+  }
+
+  /**
+   * Coherencia de un origen autogenerado con la variante destinataria
+   * (contrato rev. 1 §5.1). Solo se comprueba cuando la procedencia existe: un
+   * recurso con `origin_variant_id` nulo tiene procedencia desconocida y puede
+   * vincularse igual.
+   *
+   * No se exige que la variante exista antes del recurso: el alta del producto
+   * declara la dependencia del recurso y no al revés, así que la referencia no
+   * es una FK y el orden causal recurso → producto no se invierte.
+   */
+  private validateOriginCoherence(
+    variantId: string,
+    item: InventoryItemEntity,
+  ): string | null {
+    // `?? null` y no una comparación con `null`: una fila proyectada que no
+    // exponga la columna llega con `undefined`, y el contrato trata la ausencia
+    // igual que el `null` explícito — procedencia desconocida.
+    const originVariantId = item.originVariantId ?? null;
+    if (originVariantId === null || originVariantId === variantId) {
+      return null;
+    }
+    return (
+      `El recurso ${item.id} fue generado para la variante ` +
+      `${originVariantId} y no puede vincularse a ${variantId}.`
+    );
   }
 
   async saveUniqueViolationConflict(
