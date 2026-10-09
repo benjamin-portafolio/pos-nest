@@ -14,8 +14,9 @@ import { SyncConflictService } from '../../src/sync/sync-conflict.service';
 import { ProductoEventHandler } from '../../src/sync/producto-event.handler';
 import { InventoryEventHandler } from '../../src/sync/inventory-event.handler';
 import { VentaEventHandler } from '../../src/sync/venta-event.handler';
+import { ProveedorEventHandler } from '../../src/sync/proveedor-event.handler';
+import { EventsGateway } from '../../src/events/events.gateway';
 import { UnitEntity } from '../../src/entities/unit.entity';
-import type { EventsGateway } from '../../src/events/events.gateway';
 
 async function main() {
   const name = process.env.DATABASE_NAME ?? '';
@@ -64,21 +65,34 @@ async function main() {
     })),
   );
   const conflicts = new SyncConflictService();
-  const service = new SyncService(
-    database,
-    { notifyEventsAvailable() {} } as unknown as EventsGateway,
-    conflicts,
-    undefined,
-    new ProductoEventHandler(conflicts),
-    new InventoryEventHandler(conflicts),
-    new VentaEventHandler(conflicts),
-  );
+  const service = (gateway: EventsGateway) =>
+    new SyncService(
+      database,
+      gateway,
+      conflicts,
+      undefined,
+      new ProductoEventHandler(conflicts),
+      new InventoryEventHandler(conflicts),
+      new VentaEventHandler(conflicts),
+      undefined,
+      undefined,
+      undefined,
+      undefined,
+      undefined,
+      undefined,
+      new ProveedorEventHandler(conflicts),
+    );
   @Module({
     controllers: [SyncController],
-    providers: [{ provide: SyncService, useValue: service }],
+    providers: [
+      EventsGateway,
+      { provide: SyncService, useFactory: service, inject: [EventsGateway] },
+    ],
   })
   class IntegrationModule {}
-  const app = await NestFactory.create(IntegrationModule, { logger: false });
+  const app = await NestFactory.create(IntegrationModule, {
+    logger: ['error'],
+  });
   await app.listen(0, '127.0.0.1');
   const url = await app.getUrl();
   writeFileSync(

@@ -396,6 +396,7 @@ describe('ProductoEventHandler', () => {
 
   it('aplica idempotentemente el mismo evento', async () => {
     const existingEvent = Object.assign(new EventEntity(), {
+      syncStatus: EventSyncStatus.SYNCED,
       eventId: '00000000-0000-4000-8000-000000000001',
       serverSequence: '11',
       createdAtServer: new Date('2026-08-05T20:31:00.000Z'),
@@ -570,7 +571,16 @@ describe('ProductoEventHandler', () => {
         active: true,
         version: 1,
         lastEventId: '00000000-0000-4000-8000-000000000001',
-        lastServerSequence: null,
+        lastServerSequence: '1',
+      }),
+      baseEvent: Object.assign(new EventEntity(), {
+        eventId: '00000000-0000-4000-8000-000000000001',
+        aggregateType: 'product',
+        aggregateId: '00000000-0000-4000-8000-000000000002',
+        eventType: 'producto_creado',
+        syncStatus: EventSyncStatus.SYNCED,
+        serverSequence: '1',
+        payload: productPayload(null, null),
       }),
       variant: Object.assign(new ProductVariantEntity(), {
         id: '00000000-0000-4000-8000-000000000003',
@@ -634,7 +644,16 @@ describe('ProductoEventHandler', () => {
         active: true,
         version: 1,
         lastEventId: '00000000-0000-4000-8000-000000000001',
-        lastServerSequence: null,
+        lastServerSequence: '1',
+      }),
+      baseEvent: Object.assign(new EventEntity(), {
+        eventId: '00000000-0000-4000-8000-000000000001',
+        aggregateType: 'product',
+        aggregateId: '00000000-0000-4000-8000-000000000002',
+        eventType: 'producto_creado',
+        syncStatus: EventSyncStatus.SYNCED,
+        serverSequence: '1',
+        payload: productPayload(null, null),
       }),
       variant: Object.assign(new ProductVariantEntity(), {
         id: '00000000-0000-4000-8000-000000000003',
@@ -940,6 +959,7 @@ function managerFixture(
   ];
   let sequence = 10;
   const manager = {
+    query: jest.fn().mockResolvedValue([]),
     // La comparación de `before` lee las variantes persistidas del producto;
     // sin ellas, oldValues quedaría vacío y ocultaría la regresión.
     find: jest.fn(

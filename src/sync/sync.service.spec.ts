@@ -50,6 +50,7 @@ describe('SyncService', () => {
 
       expect(response).toEqual({
         status: 'ok',
+        capabilities: ['product_suppliers_v1'],
         latest_server_sequence: 12,
         server_time: response.server_time,
       });
@@ -252,7 +253,10 @@ describe('SyncService', () => {
           .mockResolvedValueOnce(null)
           .mockResolvedValueOnce(accepted),
       };
-      const manager = {} as EntityManager;
+      const manager = {
+        query: jest.fn().mockResolvedValue([]),
+        findOneBy: jest.fn().mockResolvedValue(null),
+      } as unknown as EntityManager;
       const dataSource = {
         getRepository: jest.fn().mockReturnValue(repository),
         transaction: jest.fn(
@@ -343,7 +347,10 @@ describe('SyncService', () => {
           .mockResolvedValueOnce(null)
           .mockResolvedValueOnce(accepted),
       };
-      const manager = {} as EntityManager;
+      const manager = {
+        query: jest.fn().mockResolvedValue([]),
+        findOneBy: jest.fn().mockResolvedValue(null),
+      } as unknown as EntityManager;
       const dataSource = {
         getRepository: jest.fn().mockReturnValue(repository),
         transaction: jest.fn(
@@ -413,7 +420,10 @@ describe('SyncService', () => {
           .mockResolvedValueOnce(null)
           .mockResolvedValueOnce(accepted),
       };
-      const manager = {} as EntityManager;
+      const manager = {
+        query: jest.fn().mockResolvedValue([]),
+        findOneBy: jest.fn().mockResolvedValue(null),
+      } as unknown as EntityManager;
       const dataSource = {
         getRepository: jest.fn().mockReturnValue(repository),
         transaction: jest.fn(
@@ -485,7 +495,10 @@ describe('SyncService', () => {
           .mockResolvedValueOnce(null)
           .mockResolvedValueOnce(accepted),
       };
-      const manager = {} as EntityManager;
+      const manager = {
+        query: jest.fn().mockResolvedValue([]),
+        findOneBy: jest.fn().mockResolvedValue(null),
+      } as unknown as EntityManager;
       const dataSource = {
         getRepository: jest.fn().mockReturnValue(repository),
         transaction: jest.fn(

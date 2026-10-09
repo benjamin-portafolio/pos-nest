@@ -1,0 +1,22 @@
+{
+  "product": {
+    "name": "Café",
+    "category_id": null,
+    "sale_configuration": {
+      "mode": "unit"
+    }
+  },
+  "variants": [
+    {
+      "variant_id": "00000000-0000-4000-8000-000000000001",
+      "name": null,
+      "sku": null,
+      "barcode": null,
+      "sale_price_minor": 2500,
+      "standard_cost_minor": null,
+      "suppliers": [],
+      "sort_order": 0
+    }
+  ],
+  "dependencies": []
+}

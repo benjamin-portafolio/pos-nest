@@ -1,3 +1,6 @@
+import { SupplierEntity } from './entities/supplier.entity';
+import { VariantSupplierEntity } from './entities/variant-supplier.entity';
+import { ProveedorEventHandler } from './sync/proveedor-event.handler';
 import { CollectionsReportService } from './reports/collections-report.service';
 import { CollectionsReportController } from './reports/collections-report.controller';
 import { CreditSaleEntity } from './entities/credit-sale.entity';
@@ -68,6 +71,8 @@ import { FinancialReportController } from './reports/financial-report.controller
           CustomerPaymentEntity,
           CreditAllocationEntity,
           ClienteEntity,
+          SupplierEntity,
+          VariantSupplierEntity,
           SaleEntity,
           SaleItemEntity,
           SalePaymentEntity,
@@ -109,6 +114,7 @@ import { FinancialReportController } from './reports/financial-report.controller
     CustomerCreditProjector,
     AbonoClienteEventHandler,
     ClienteEventHandler,
+    ProveedorEventHandler,
     VentaEventHandler,
     FinancialCategoryEventHandler,
     FinancialEntryEventHandler,

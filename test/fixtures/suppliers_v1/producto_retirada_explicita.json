@@ -1,0 +1,68 @@
+{
+  "base_event_id": "00000000-0000-4000-8000-000000000005",
+  "before": {
+    "product": {
+      "name": "Café",
+      "category_id": null,
+      "sale_configuration": {
+        "mode": "unit"
+      }
+    },
+    "variants": [
+      {
+        "variant_id": "00000000-0000-4000-8000-000000000001",
+        "name": null,
+        "sku": null,
+        "barcode": null,
+        "sale_price_minor": 2500,
+        "standard_cost_minor": null,
+        "suppliers": [
+          {
+            "supplier_id": "00000000-0000-4000-8000-000000000002",
+            "quoted_price_minor": 0,
+            "quoted_at_ms": 1791331200000
+          },
+          {
+            "supplier_id": "00000000-0000-4000-8000-000000000003",
+            "quoted_price_minor": 1234,
+            "quoted_at_ms": 1791331200000
+          }
+        ],
+        "sort_order": 0
+      }
+    ],
+    "dependencies": [
+      {
+        "ref_type": "supplier",
+        "ref_id": "00000000-0000-4000-8000-000000000002",
+        "depends_on_event_id": "00000000-0000-4000-8000-000000000004"
+      },
+      {
+        "ref_type": "supplier",
+        "ref_id": "00000000-0000-4000-8000-000000000003"
+      }
+    ]
+  },
+  "after": {
+    "product": {
+      "name": "Café",
+      "category_id": null,
+      "sale_configuration": {
+        "mode": "unit"
+      }
+    },
+    "variants": [
+      {
+        "variant_id": "00000000-0000-4000-8000-000000000001",
+        "name": null,
+        "sku": null,
+        "barcode": null,
+        "sale_price_minor": 2500,
+        "standard_cost_minor": null,
+        "suppliers": [],
+        "sort_order": 0
+      }
+    ],
+    "dependencies": []
+  }
+}

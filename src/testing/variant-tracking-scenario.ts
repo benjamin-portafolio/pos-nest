@@ -232,6 +232,32 @@ export async function seedSharedDirectLink(
   );
 
   const state = sharedDirectState();
+  // Los fixtures reservan 41 para la base y 42 para la desvinculación.
+  // Acreditar esa base también en la secuencia real del esquema aislado.
+  const fixtureBase = variantTrackingEvent(
+    'producto/producto-directo-a-ninguno.json',
+  ).base_server_sequence;
+  await database.query(
+    "SELECT setval(pg_get_serial_sequence($1, 'server_sequence'), $2, true)",
+    [database.getMetadata(EventEntity).tablePath, Number(fixtureBase) - 1],
+  );
+  const creation = await database.manager.save(
+    database.manager.create(EventEntity, {
+      eventId: VARIANT_TRACKING.evProductoCreado,
+      aggregateType: 'product',
+      aggregateId: VARIANT_TRACKING.productoMolido,
+      eventType: 'producto_creado',
+      deviceId: 'dispositivo-1',
+      userId: 'usuario-1',
+      localSequence: 2,
+      baseServerSequence: null,
+      baseVersion: 1,
+      createdAtLocal: new Date('2026-10-01T12:00:00.000Z'),
+      payload: state,
+      syncStatus: EventSyncStatus.SYNCED,
+      rejectionReason: null,
+    }),
+  );
   await database.manager.save(
     database.manager.create(ProductEntity, {
       id: VARIANT_TRACKING.productoMolido,
@@ -244,7 +270,7 @@ export async function seedSharedDirectLink(
       version: 1,
       createdEventId: VARIANT_TRACKING.evProductoCreado,
       lastEventId: VARIANT_TRACKING.evProductoCreado,
-      lastServerSequence: null,
+      lastServerSequence: creation.serverSequence,
     }),
   );
   await database.manager.save(
@@ -263,25 +289,8 @@ export async function seedSharedDirectLink(
         version: 1,
         createdEventId: VARIANT_TRACKING.evProductoCreado,
         lastEventId: VARIANT_TRACKING.evProductoCreado,
-        lastServerSequence: null,
+        lastServerSequence: creation.serverSequence,
       }),
     ),
-  );
-  await database.manager.save(
-    database.manager.create(EventEntity, {
-      eventId: VARIANT_TRACKING.evProductoCreado,
-      aggregateType: 'product',
-      aggregateId: VARIANT_TRACKING.productoMolido,
-      eventType: 'producto_creado',
-      deviceId: 'dispositivo-1',
-      userId: 'usuario-1',
-      localSequence: 2,
-      baseServerSequence: null,
-      baseVersion: 1,
-      createdAtLocal: new Date('2026-10-01T12:00:00.000Z'),
-      payload: state,
-      syncStatus: EventSyncStatus.SYNCED,
-      rejectionReason: null,
-    }),
   );
 }

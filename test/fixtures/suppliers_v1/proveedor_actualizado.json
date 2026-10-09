@@ -1,0 +1,13 @@
+{
+  "base_event_id": "00000000-0000-4000-8000-000000000004",
+  "before": {
+    "name": "Distribuidora Norte",
+    "phone": null,
+    "notes": "Entrega semanal"
+  },
+  "after": {
+    "name": "Distribuidora Norte",
+    "phone": "001234",
+    "notes": null
+  }
+}

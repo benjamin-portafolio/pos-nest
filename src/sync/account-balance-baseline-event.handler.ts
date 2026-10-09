@@ -83,7 +83,7 @@ export class AccountBalanceBaselineEventHandler {
     }
     const declared = await manager.findOne(
       AccountBalanceBaselineEntity,
-      { order: { createdAtServer: 'ASC' } },
+      { where: {}, order: { createdAtServer: 'ASC' } },
     );
     if (declared) {
       return this.saveConflict(manager, e, SLOT_REASON, declared.id);

@@ -1,3 +1,5 @@
+import { ProductoProveedorPrecio } from './producto-proveedor-precio';
+import { ProductoProveedorDependencia } from './producto-proveedor-dependencia';
 import { SaleMode } from '../../enums/sale-mode.enum';
 
 const MAX_SAFE_MINOR_AMOUNT = Number.MAX_SAFE_INTEGER;
@@ -22,6 +24,8 @@ export interface ProductoCreadoVariantValue {
   inventoryItemId: string | null;
   recipeComponents: readonly ProductoCreadoRecipeComponentValue[];
   sortOrder: number;
+  /** null/ausente es desconocimiento legado; [] es conjunto conocido vacío. */
+  suppliers?: readonly ProductoProveedorPrecio[] | null;
 }
 
 export interface ProductoCreadoRecipeComponentValue {
@@ -52,7 +56,25 @@ export class ProductoCreadoPayload {
     readonly variants: readonly ProductoCreadoVariantValue[],
     readonly categoryDependency: ProductoCreadoDependencyValue | null,
     readonly inventoryDependencies: readonly ProductoCreadoInventoryDependencyValue[],
-  ) {}
+    readonly supplierDependencies: readonly ProductoProveedorDependencia[] = [],
+  ) {
+    validateVariants([...variants]);
+    this.variants = Object.freeze(
+      variants.map((v) => {
+        const suppliers =
+          v.suppliers == null
+            ? null
+            : ProductoProveedorPrecio.parseVariant({
+                suppliers: v.suppliers.map((s) => s.toJson()),
+              });
+        return Object.freeze({ ...v, suppliers });
+      }),
+    );
+    this.supplierDependencies = ProductoProveedorDependencia.validate(
+      this.supplierIds,
+      supplierDependencies,
+    );
+  }
 
   static fromJson(payload: Record<string, unknown>): ProductoCreadoPayload {
     const product = requiredRecord(payload.product, 'product');
@@ -80,6 +102,7 @@ export class ProductoCreadoPayload {
     let categoryDependencySeen = false;
     let saleUnitDependencyId: string | null = null;
     const inventoryDependencies: ProductoCreadoInventoryDependencyValue[] = [];
+    const supplierDependencies: ProductoProveedorDependencia[] = [];
     for (let index = 0; index < payload.dependencies.length; index += 1) {
       const dependency = requiredRecord(
         payload.dependencies[index],
@@ -123,8 +146,14 @@ export class ProductoCreadoPayload {
         inventoryDependencies.push(parseInventoryDependency(dependency, index));
         continue;
       }
+      if (dependency.ref_type === 'supplier') {
+        supplierDependencies.push(
+          ProductoProveedorDependencia.fromJson(dependency),
+        );
+        continue;
+      }
       throw new Error(
-        'producto_creado solo admite dependencias category, unit e inventory_item.',
+        'producto_creado solo admite dependencias category, unit, inventory_item y supplier.',
       );
     }
     if (categoryId === null && categoryDependencySeen) {
@@ -152,6 +181,57 @@ export class ProductoCreadoPayload {
       variants,
       categoryDependency,
       inventoryDependencies,
+      ProductoProveedorDependencia.validate(
+        new Set(
+          variants.flatMap((v) => (v.suppliers ?? []).map((s) => s.supplierId)),
+        ),
+        supplierDependencies,
+      ),
+    );
+  }
+
+  static knowsSuppliersJson(json: Record<string, unknown>): boolean {
+    if (!Array.isArray(json?.variants) || json.variants.length === 0)
+      return false;
+    const values = json.variants.map((v) =>
+      ProductoProveedorPrecio.parseVariant(requiredRecord(v, 'variant')),
+    );
+    const known = values[0] != null;
+    if (values.some((v) => (v != null) !== known))
+      throw new Error('Snapshot parcial de proveedores.');
+    return known;
+  }
+  get supplierIds(): ReadonlySet<string> {
+    return new Set(
+      this.variants.flatMap((v) =>
+        (v.suppliers ?? []).map((s) => s.supplierId),
+      ),
+    );
+  }
+  get knowsSuppliers(): boolean {
+    return this.variants[0]?.suppliers != null;
+  }
+  get dependencyEventIds(): ReadonlySet<string> {
+    return new Set(
+      [
+        this.categoryDependency?.dependsOnEventId,
+        ...this.inventoryDependencies.map((d) => d.dependsOnEventId),
+        ...this.supplierDependencies.map((d) => d.dependsOnEventId),
+      ].filter((id): id is string => id != null),
+    );
+  }
+  withKnownSuppliers(): ProductoCreadoPayload {
+    return new ProductoCreadoPayload(
+      this.name,
+      this.categoryId,
+      this.saleConfiguration,
+      this.variants.map((v) => ({
+        ...v,
+        suppliers: v.suppliers ?? Object.freeze([]),
+      })),
+      this.categoryDependency,
+      this.inventoryDependencies,
+      this.supplierDependencies,
     );
   }
 
@@ -199,6 +279,9 @@ export class ProductoCreadoPayload {
                 })),
               },
             }),
+        ...(variant.suppliers == null
+          ? {}
+          : { suppliers: variant.suppliers.map((s) => s.toJson()) }),
         sort_order: variant.sortOrder,
       })),
       dependencies: [
@@ -229,6 +312,7 @@ export class ProductoCreadoPayload {
             ? { depends_on_event_id: dependency.dependsOnEventId }
             : {}),
         })),
+        ...this.supplierDependencies.map((d) => d.toJson()),
       ],
     };
   }
@@ -280,6 +364,7 @@ function parseVariant(
       : null,
     inventoryItemId,
     recipeComponents,
+    suppliers: ProductoProveedorPrecio.parseVariant(variant),
     sortOrder: nonNegativeSafeInteger(
       variant.sort_order,
       `${fieldName}.sort_order`,
@@ -288,6 +373,13 @@ function parseVariant(
 }
 
 function validateVariants(variants: ProductoCreadoVariantValue[]): void {
+  if (
+    variants.some((v) => v.suppliers == null) &&
+    variants.some((v) => v.suppliers != null)
+  )
+    throw new Error(
+      'Todas las variantes deben declarar suppliers o conservar su ausencia legada.',
+    );
   const ids = new Set<string>();
   const nameKeys = new Set<string>();
   const inventoryItemIds = new Set<string>();

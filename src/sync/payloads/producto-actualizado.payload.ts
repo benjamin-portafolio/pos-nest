@@ -1,3 +1,4 @@
+import { ProductoProveedorPrecio } from './producto-proveedor-precio';
 import { ProductoCreadoPayload } from './producto-creado.payload';
 
 export class ProductoActualizadoPayload {
@@ -8,7 +9,19 @@ export class ProductoActualizadoPayload {
     readonly before: ProductoCreadoPayload,
     readonly after: ProductoCreadoPayload,
     readonly deleteProduct = false,
-  ) {}
+  ) {
+    if (before.knowsSuppliers !== after.knowsSuppliers && !deleteProduct)
+      throw new Error(
+        'La edición debe conocer suppliers en before y after, o conservar ambos estados legados.',
+      );
+    if (
+      JSON.stringify(before.saleConfiguration) !==
+      JSON.stringify(after.saleConfiguration)
+    )
+      throw new Error('No se puede cambiar la forma de venta.');
+    if (deleteProduct && !ProductoActualizadoPayload.sameState(before, after))
+      throw new Error('El borrado debe conservar el estado anterior.');
+  }
   static fromJson(json: Record<string, unknown>): ProductoActualizadoPayload {
     if (
       typeof json.base_event_id !== 'string' ||
@@ -31,17 +44,64 @@ export class ProductoActualizadoPayload {
       );
     const before = read(json.before);
     const after = deleteProduct ? before : read(json.after);
-    if (
-      JSON.stringify(before.saleConfiguration) !==
-      JSON.stringify(after.saleConfiguration)
-    )
-      throw new Error('No se puede cambiar la forma de venta.');
     return new ProductoActualizadoPayload(
       json.base_event_id,
       before,
       after,
       deleteProduct,
     );
+  }
+  static sameState(
+    a: ProductoCreadoPayload,
+    b: ProductoCreadoPayload,
+  ): boolean {
+    if (
+      a.name !== b.name ||
+      a.categoryId !== b.categoryId ||
+      JSON.stringify(a.saleConfiguration) !==
+        JSON.stringify(b.saleConfiguration) ||
+      a.variants.length !== b.variants.length
+    )
+      return false;
+    return a.variants.every((v) => {
+      const other = b.variants.find((candidate) => candidate.id === v.id);
+      return (
+        other != null &&
+        v.name === other.name &&
+        v.nameKey === other.nameKey &&
+        v.barcode === other.barcode &&
+        v.salePriceMinor === other.salePriceMinor &&
+        v.standardCostMinor === other.standardCostMinor &&
+        v.inventoryItemId === other.inventoryItemId &&
+        v.sortOrder === other.sortOrder &&
+        ProductoProveedorPrecio.sameList(v.suppliers, other.suppliers) &&
+        v.recipeComponents.length === other.recipeComponents.length &&
+        v.recipeComponents.every((c) =>
+          other.recipeComponents.some(
+            (d) =>
+              c.inventoryItemId === d.inventoryItemId &&
+              c.quantityAtomic === d.quantityAtomic,
+          ),
+        )
+      );
+    });
+  }
+  static sameEditingBase(
+    current: ProductoCreadoPayload,
+    before: ProductoCreadoPayload,
+  ): boolean {
+    return (
+      this.sameState(current, before) ||
+      (!current.knowsSuppliers &&
+        before.knowsSuppliers &&
+        this.sameState(current.withKnownSuppliers(), before))
+    );
+  }
+  get dependencyEventIds(): ReadonlySet<string> {
+    return new Set([
+      this.baseEventId,
+      ...(this.deleteProduct ? [] : this.after.dependencyEventIds),
+    ]);
   }
   get removedVariants() {
     return this.before.variants.filter(
