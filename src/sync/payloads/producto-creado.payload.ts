@@ -22,6 +22,8 @@ export interface ProductoCreadoVariantValue {
   salePriceMinor: number;
   standardCostMinor: number | null;
   inventoryItemId: string | null;
+  /** undefined: legado ausente; null: aviso desactivado conocido; número: átomos. */
+  minimumStockAtomic?: number | null;
   recipeComponents: readonly ProductoCreadoRecipeComponentValue[];
   sortOrder: number;
   /** null/ausente es desconocimiento legado; [] es conjunto conocido vacío. */
@@ -190,6 +192,34 @@ export class ProductoCreadoPayload {
     );
   }
 
+  get knowsMinimumStock(): boolean {
+    return this.variants[0]?.minimumStockAtomic !== undefined;
+  }
+  static knowsMinimumStockJson(json: Record<string, unknown>): boolean {
+    if (!Array.isArray(json?.variants) || json.variants.length === 0)
+      return false;
+    const variants = json.variants.map((v, i) => parseVariant(v, i));
+    const known = variants[0].minimumStockAtomic !== undefined;
+    if (variants.some((v) => (v.minimumStockAtomic !== undefined) !== known))
+      throw new Error('Snapshot parcial de minimum_stock_atomic.');
+    return known;
+  }
+  /** Promoción explícita: no altera el formato de eventos históricos. */
+  withKnownMinimumStock(): ProductoCreadoPayload {
+    return new ProductoCreadoPayload(
+      this.name,
+      this.categoryId,
+      this.saleConfiguration,
+      this.variants.map((v) => ({
+        ...v,
+        minimumStockAtomic: v.minimumStockAtomic ?? null,
+      })),
+      this.categoryDependency,
+      this.inventoryDependencies,
+      this.supplierDependencies,
+    );
+  }
+
   static knowsSuppliersJson(json: Record<string, unknown>): boolean {
     if (!Array.isArray(json?.variants) || json.variants.length === 0)
       return false;
@@ -265,6 +295,9 @@ export class ProductoCreadoPayload {
         barcode: variant.barcode,
         sale_price_minor: variant.salePriceMinor,
         standard_cost_minor: variant.standardCostMinor,
+        ...(variant.minimumStockAtomic === undefined
+          ? {}
+          : { minimum_stock_atomic: variant.minimumStockAtomic }),
         ...(variant.inventoryItemId === null
           ? {}
           : { inventory_item_id: variant.inventoryItemId }),
@@ -363,6 +396,17 @@ function parseVariant(
         )
       : null,
     inventoryItemId,
+    minimumStockAtomic: Object.prototype.hasOwnProperty.call(
+      variant,
+      'minimum_stock_atomic',
+    )
+      ? variant.minimum_stock_atomic === null
+        ? null
+        : nonNegativeSafeInteger(
+            variant.minimum_stock_atomic,
+            `${fieldName}.minimum_stock_atomic`,
+          )
+      : undefined,
     recipeComponents,
     suppliers: ProductoProveedorPrecio.parseVariant(variant),
     sortOrder: nonNegativeSafeInteger(
@@ -380,6 +424,24 @@ function validateVariants(variants: ProductoCreadoVariantValue[]): void {
     throw new Error(
       'Todas las variantes deben declarar suppliers o conservar su ausencia legada.',
     );
+  if (
+    variants.some(
+      (v) =>
+        (v.minimumStockAtomic !== undefined) !==
+        (variants[0].minimumStockAtomic !== undefined),
+    )
+  )
+    throw new Error('Snapshot parcial de minimum_stock_atomic.');
+  for (const variant of variants) {
+    if (
+      variant.minimumStockAtomic !== undefined &&
+      variant.minimumStockAtomic !== null
+    )
+      nonNegativeSafeInteger(
+        variant.minimumStockAtomic,
+        'minimum_stock_atomic',
+      );
+  }
   const ids = new Set<string>();
   const nameKeys = new Set<string>();
   const inventoryItemIds = new Set<string>();

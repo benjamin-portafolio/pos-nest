@@ -43,6 +43,10 @@ import { SyncProjectionEntity } from './sync-projection.entity';
   'ck_product_variants_barcode_digits',
   '"barcode" IS NULL OR "barcode" ~ \'^[0-9]{1,32}$\'',
 )
+@Check(
+  'ck_product_variants_minimum_stock_range',
+  '"minimum_stock_atomic" IS NULL OR "minimum_stock_atomic" BETWEEN 0 AND 9007199254740991',
+)
 export class ProductVariantEntity extends SyncProjectionEntity {
   @PrimaryColumn('uuid', {
     name: 'variant_id',
@@ -103,6 +107,15 @@ export class ProductVariantEntity extends SyncProjectionEntity {
       'Costo estándar opcional; null es desconocido y cero es costo conocido.',
   })
   standardCostMinor: string | null;
+
+  @Column({
+    name: 'minimum_stock_atomic',
+    type: 'bigint',
+    nullable: true,
+    comment:
+      'Umbral en átomos del recurso vinculado, 0..9007199254740991; null desactiva el aviso. Se conserva al desvincular inventario.',
+  })
+  minimumStockAtomic: string | null;
 
   @Column('uuid', {
     name: 'inventory_item_id',

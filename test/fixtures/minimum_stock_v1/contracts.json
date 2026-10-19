@@ -1,0 +1,2393 @@
+{
+  "creations": [
+    {
+      "name": "legacy",
+      "valid": true,
+      "payload": {
+        "product": {
+          "name": "Café",
+          "category_id": null,
+          "sale_configuration": {
+            "mode": "unit"
+          }
+        },
+        "variants": [
+          {
+            "variant_id": "00000000-0000-4000-8000-000000000001",
+            "name": "Chico",
+            "sku": null,
+            "barcode": null,
+            "sale_price_minor": 1000,
+            "standard_cost_minor": null,
+            "sort_order": 0
+          },
+          {
+            "variant_id": "00000000-0000-4000-8000-000000000002",
+            "name": "Grande",
+            "sku": null,
+            "barcode": null,
+            "sale_price_minor": 1000,
+            "standard_cost_minor": null,
+            "sort_order": 1
+          }
+        ],
+        "dependencies": []
+      }
+    },
+    {
+      "name": "null",
+      "valid": true,
+      "payload": {
+        "product": {
+          "name": "Café",
+          "category_id": null,
+          "sale_configuration": {
+            "mode": "unit"
+          }
+        },
+        "variants": [
+          {
+            "variant_id": "00000000-0000-4000-8000-000000000001",
+            "name": "Chico",
+            "sku": null,
+            "barcode": null,
+            "sale_price_minor": 1000,
+            "standard_cost_minor": null,
+            "sort_order": 0,
+            "minimum_stock_atomic": null
+          },
+          {
+            "variant_id": "00000000-0000-4000-8000-000000000002",
+            "name": "Grande",
+            "sku": null,
+            "barcode": null,
+            "sale_price_minor": 1000,
+            "standard_cost_minor": null,
+            "sort_order": 1,
+            "minimum_stock_atomic": null
+          }
+        ],
+        "dependencies": []
+      }
+    },
+    {
+      "name": "zero",
+      "valid": true,
+      "payload": {
+        "product": {
+          "name": "Café",
+          "category_id": null,
+          "sale_configuration": {
+            "mode": "unit"
+          }
+        },
+        "variants": [
+          {
+            "variant_id": "00000000-0000-4000-8000-000000000001",
+            "name": "Chico",
+            "sku": null,
+            "barcode": null,
+            "sale_price_minor": 1000,
+            "standard_cost_minor": null,
+            "sort_order": 0,
+            "minimum_stock_atomic": 0
+          },
+          {
+            "variant_id": "00000000-0000-4000-8000-000000000002",
+            "name": "Grande",
+            "sku": null,
+            "barcode": null,
+            "sale_price_minor": 1000,
+            "standard_cost_minor": null,
+            "sort_order": 1,
+            "minimum_stock_atomic": 0
+          }
+        ],
+        "dependencies": []
+      }
+    },
+    {
+      "name": "positive",
+      "valid": true,
+      "payload": {
+        "product": {
+          "name": "Café",
+          "category_id": null,
+          "sale_configuration": {
+            "mode": "unit"
+          }
+        },
+        "variants": [
+          {
+            "variant_id": "00000000-0000-4000-8000-000000000001",
+            "name": "Chico",
+            "sku": null,
+            "barcode": null,
+            "sale_price_minor": 1000,
+            "standard_cost_minor": null,
+            "sort_order": 0,
+            "minimum_stock_atomic": 5
+          },
+          {
+            "variant_id": "00000000-0000-4000-8000-000000000002",
+            "name": "Grande",
+            "sku": null,
+            "barcode": null,
+            "sale_price_minor": 1000,
+            "standard_cost_minor": null,
+            "sort_order": 1,
+            "minimum_stock_atomic": 5
+          }
+        ],
+        "dependencies": []
+      }
+    },
+    {
+      "name": "max",
+      "valid": true,
+      "payload": {
+        "product": {
+          "name": "Café",
+          "category_id": null,
+          "sale_configuration": {
+            "mode": "unit"
+          }
+        },
+        "variants": [
+          {
+            "variant_id": "00000000-0000-4000-8000-000000000001",
+            "name": "Chico",
+            "sku": null,
+            "barcode": null,
+            "sale_price_minor": 1000,
+            "standard_cost_minor": null,
+            "sort_order": 0,
+            "minimum_stock_atomic": 9007199254740991
+          },
+          {
+            "variant_id": "00000000-0000-4000-8000-000000000002",
+            "name": "Grande",
+            "sku": null,
+            "barcode": null,
+            "sale_price_minor": 1000,
+            "standard_cost_minor": null,
+            "sort_order": 1,
+            "minimum_stock_atomic": 9007199254740991
+          }
+        ],
+        "dependencies": []
+      }
+    },
+    {
+      "name": "measured",
+      "valid": true,
+      "payload": {
+        "product": {
+          "name": "Café",
+          "category_id": null,
+          "sale_configuration": {
+            "mode": "measured",
+            "sale_unit_id": "00000000-0000-4000-8000-000000000010",
+            "price_reference_quantity_atomic": 1000
+          }
+        },
+        "variants": [
+          {
+            "variant_id": "00000000-0000-4000-8000-000000000001",
+            "name": "Chico",
+            "sku": null,
+            "barcode": null,
+            "sale_price_minor": 1000,
+            "standard_cost_minor": null,
+            "sort_order": 0,
+            "minimum_stock_atomic": 1500,
+            "inventory_item_id": "00000000-0000-4000-8000-000000000020"
+          },
+          {
+            "variant_id": "00000000-0000-4000-8000-000000000002",
+            "name": "Grande",
+            "sku": null,
+            "barcode": null,
+            "sale_price_minor": 1000,
+            "standard_cost_minor": null,
+            "sort_order": 1,
+            "minimum_stock_atomic": 1500,
+            "inventory_item_id": "00000000-0000-4000-8000-000000000021"
+          }
+        ],
+        "dependencies": [
+          {
+            "ref_type": "unit",
+            "ref_id": "00000000-0000-4000-8000-000000000010"
+          },
+          {
+            "ref_type": "inventory_item",
+            "ref_id": "00000000-0000-4000-8000-000000000020"
+          },
+          {
+            "ref_type": "inventory_item",
+            "ref_id": "00000000-0000-4000-8000-000000000021"
+          }
+        ]
+      }
+    },
+    {
+      "name": "negative",
+      "valid": false,
+      "payload": {
+        "product": {
+          "name": "Café",
+          "category_id": null,
+          "sale_configuration": {
+            "mode": "unit"
+          }
+        },
+        "variants": [
+          {
+            "variant_id": "00000000-0000-4000-8000-000000000001",
+            "name": "Chico",
+            "sku": null,
+            "barcode": null,
+            "sale_price_minor": 1000,
+            "standard_cost_minor": null,
+            "sort_order": 0,
+            "minimum_stock_atomic": -1
+          },
+          {
+            "variant_id": "00000000-0000-4000-8000-000000000002",
+            "name": "Grande",
+            "sku": null,
+            "barcode": null,
+            "sale_price_minor": 1000,
+            "standard_cost_minor": null,
+            "sort_order": 1,
+            "minimum_stock_atomic": -1
+          }
+        ],
+        "dependencies": []
+      }
+    },
+    {
+      "name": "overflow",
+      "valid": false,
+      "payload": {
+        "product": {
+          "name": "Café",
+          "category_id": null,
+          "sale_configuration": {
+            "mode": "unit"
+          }
+        },
+        "variants": [
+          {
+            "variant_id": "00000000-0000-4000-8000-000000000001",
+            "name": "Chico",
+            "sku": null,
+            "barcode": null,
+            "sale_price_minor": 1000,
+            "standard_cost_minor": null,
+            "sort_order": 0,
+            "minimum_stock_atomic": 9007199254740992
+          },
+          {
+            "variant_id": "00000000-0000-4000-8000-000000000002",
+            "name": "Grande",
+            "sku": null,
+            "barcode": null,
+            "sale_price_minor": 1000,
+            "standard_cost_minor": null,
+            "sort_order": 1,
+            "minimum_stock_atomic": 9007199254740992
+          }
+        ],
+        "dependencies": []
+      }
+    },
+    {
+      "name": "string",
+      "valid": false,
+      "payload": {
+        "product": {
+          "name": "Café",
+          "category_id": null,
+          "sale_configuration": {
+            "mode": "unit"
+          }
+        },
+        "variants": [
+          {
+            "variant_id": "00000000-0000-4000-8000-000000000001",
+            "name": "Chico",
+            "sku": null,
+            "barcode": null,
+            "sale_price_minor": 1000,
+            "standard_cost_minor": null,
+            "sort_order": 0,
+            "minimum_stock_atomic": "5"
+          },
+          {
+            "variant_id": "00000000-0000-4000-8000-000000000002",
+            "name": "Grande",
+            "sku": null,
+            "barcode": null,
+            "sale_price_minor": 1000,
+            "standard_cost_minor": null,
+            "sort_order": 1,
+            "minimum_stock_atomic": "5"
+          }
+        ],
+        "dependencies": []
+      }
+    },
+    {
+      "name": "boolean",
+      "valid": false,
+      "payload": {
+        "product": {
+          "name": "Café",
+          "category_id": null,
+          "sale_configuration": {
+            "mode": "unit"
+          }
+        },
+        "variants": [
+          {
+            "variant_id": "00000000-0000-4000-8000-000000000001",
+            "name": "Chico",
+            "sku": null,
+            "barcode": null,
+            "sale_price_minor": 1000,
+            "standard_cost_minor": null,
+            "sort_order": 0,
+            "minimum_stock_atomic": true
+          },
+          {
+            "variant_id": "00000000-0000-4000-8000-000000000002",
+            "name": "Grande",
+            "sku": null,
+            "barcode": null,
+            "sale_price_minor": 1000,
+            "standard_cost_minor": null,
+            "sort_order": 1,
+            "minimum_stock_atomic": true
+          }
+        ],
+        "dependencies": []
+      }
+    },
+    {
+      "name": "fraction",
+      "valid": false,
+      "payload": {
+        "product": {
+          "name": "Café",
+          "category_id": null,
+          "sale_configuration": {
+            "mode": "unit"
+          }
+        },
+        "variants": [
+          {
+            "variant_id": "00000000-0000-4000-8000-000000000001",
+            "name": "Chico",
+            "sku": null,
+            "barcode": null,
+            "sale_price_minor": 1000,
+            "standard_cost_minor": null,
+            "sort_order": 0,
+            "minimum_stock_atomic": 1.5
+          },
+          {
+            "variant_id": "00000000-0000-4000-8000-000000000002",
+            "name": "Grande",
+            "sku": null,
+            "barcode": null,
+            "sale_price_minor": 1000,
+            "standard_cost_minor": null,
+            "sort_order": 1,
+            "minimum_stock_atomic": 1.5
+          }
+        ],
+        "dependencies": []
+      }
+    },
+    {
+      "name": "array",
+      "valid": false,
+      "payload": {
+        "product": {
+          "name": "Café",
+          "category_id": null,
+          "sale_configuration": {
+            "mode": "unit"
+          }
+        },
+        "variants": [
+          {
+            "variant_id": "00000000-0000-4000-8000-000000000001",
+            "name": "Chico",
+            "sku": null,
+            "barcode": null,
+            "sale_price_minor": 1000,
+            "standard_cost_minor": null,
+            "sort_order": 0,
+            "minimum_stock_atomic": []
+          },
+          {
+            "variant_id": "00000000-0000-4000-8000-000000000002",
+            "name": "Grande",
+            "sku": null,
+            "barcode": null,
+            "sale_price_minor": 1000,
+            "standard_cost_minor": null,
+            "sort_order": 1,
+            "minimum_stock_atomic": []
+          }
+        ],
+        "dependencies": []
+      }
+    },
+    {
+      "name": "object",
+      "valid": false,
+      "payload": {
+        "product": {
+          "name": "Café",
+          "category_id": null,
+          "sale_configuration": {
+            "mode": "unit"
+          }
+        },
+        "variants": [
+          {
+            "variant_id": "00000000-0000-4000-8000-000000000001",
+            "name": "Chico",
+            "sku": null,
+            "barcode": null,
+            "sale_price_minor": 1000,
+            "standard_cost_minor": null,
+            "sort_order": 0,
+            "minimum_stock_atomic": {}
+          },
+          {
+            "variant_id": "00000000-0000-4000-8000-000000000002",
+            "name": "Grande",
+            "sku": null,
+            "barcode": null,
+            "sale_price_minor": 1000,
+            "standard_cost_minor": null,
+            "sort_order": 1,
+            "minimum_stock_atomic": {}
+          }
+        ],
+        "dependencies": []
+      }
+    },
+    {
+      "name": "partial",
+      "valid": false,
+      "payload": {
+        "product": {
+          "name": "Café",
+          "category_id": null,
+          "sale_configuration": {
+            "mode": "unit"
+          }
+        },
+        "variants": [
+          {
+            "variant_id": "00000000-0000-4000-8000-000000000001",
+            "name": "Chico",
+            "sku": null,
+            "barcode": null,
+            "sale_price_minor": 1000,
+            "standard_cost_minor": null,
+            "sort_order": 0,
+            "minimum_stock_atomic": null
+          },
+          {
+            "variant_id": "00000000-0000-4000-8000-000000000002",
+            "name": "Grande",
+            "sku": null,
+            "barcode": null,
+            "sale_price_minor": 1000,
+            "standard_cost_minor": null,
+            "sort_order": 1
+          }
+        ],
+        "dependencies": []
+      }
+    },
+    {
+      "name": "integral-json-number",
+      "valid": true,
+      "payload": {
+        "product": {
+          "name": "Café",
+          "category_id": null,
+          "sale_configuration": {
+            "mode": "unit"
+          }
+        },
+        "variants": [
+          {
+            "variant_id": "00000000-0000-4000-8000-000000000001",
+            "name": "Chico",
+            "sku": null,
+            "barcode": null,
+            "sale_price_minor": 1000,
+            "standard_cost_minor": null,
+            "sort_order": 0,
+            "minimum_stock_atomic": 1.0
+          },
+          {
+            "variant_id": "00000000-0000-4000-8000-000000000002",
+            "name": "Grande",
+            "sku": null,
+            "barcode": null,
+            "sale_price_minor": 1000,
+            "standard_cost_minor": null,
+            "sort_order": 1,
+            "minimum_stock_atomic": 1.0
+          }
+        ],
+        "dependencies": []
+      }
+    }
+  ],
+  "updates": [
+    {
+      "name": "legacy-to-legacy",
+      "valid": true,
+      "payload": {
+        "base_event_id": "00000000-0000-4000-8000-000000000090",
+        "before": {
+          "product": {
+            "name": "Café",
+            "category_id": null,
+            "sale_configuration": {
+              "mode": "unit"
+            }
+          },
+          "variants": [
+            {
+              "variant_id": "00000000-0000-4000-8000-000000000001",
+              "name": "Chico",
+              "sku": null,
+              "barcode": null,
+              "sale_price_minor": 1000,
+              "standard_cost_minor": null,
+              "sort_order": 0
+            },
+            {
+              "variant_id": "00000000-0000-4000-8000-000000000002",
+              "name": "Grande",
+              "sku": null,
+              "barcode": null,
+              "sale_price_minor": 1000,
+              "standard_cost_minor": null,
+              "sort_order": 1
+            }
+          ],
+          "dependencies": []
+        },
+        "after": {
+          "product": {
+            "name": "Café",
+            "category_id": null,
+            "sale_configuration": {
+              "mode": "unit"
+            }
+          },
+          "variants": [
+            {
+              "variant_id": "00000000-0000-4000-8000-000000000001",
+              "name": "Chico",
+              "sku": null,
+              "barcode": null,
+              "sale_price_minor": 1000,
+              "standard_cost_minor": null,
+              "sort_order": 0
+            },
+            {
+              "variant_id": "00000000-0000-4000-8000-000000000002",
+              "name": "Grande",
+              "sku": null,
+              "barcode": null,
+              "sale_price_minor": 1000,
+              "standard_cost_minor": null,
+              "sort_order": 1
+            }
+          ],
+          "dependencies": []
+        }
+      }
+    },
+    {
+      "name": "null-to-positive",
+      "valid": true,
+      "payload": {
+        "base_event_id": "00000000-0000-4000-8000-000000000090",
+        "before": {
+          "product": {
+            "name": "Café",
+            "category_id": null,
+            "sale_configuration": {
+              "mode": "unit"
+            }
+          },
+          "variants": [
+            {
+              "variant_id": "00000000-0000-4000-8000-000000000001",
+              "name": "Chico",
+              "sku": null,
+              "barcode": null,
+              "sale_price_minor": 1000,
+              "standard_cost_minor": null,
+              "sort_order": 0,
+              "minimum_stock_atomic": null
+            },
+            {
+              "variant_id": "00000000-0000-4000-8000-000000000002",
+              "name": "Grande",
+              "sku": null,
+              "barcode": null,
+              "sale_price_minor": 1000,
+              "standard_cost_minor": null,
+              "sort_order": 1,
+              "minimum_stock_atomic": null
+            }
+          ],
+          "dependencies": []
+        },
+        "after": {
+          "product": {
+            "name": "Café",
+            "category_id": null,
+            "sale_configuration": {
+              "mode": "unit"
+            }
+          },
+          "variants": [
+            {
+              "variant_id": "00000000-0000-4000-8000-000000000001",
+              "name": "Chico",
+              "sku": null,
+              "barcode": null,
+              "sale_price_minor": 1000,
+              "standard_cost_minor": null,
+              "sort_order": 0,
+              "minimum_stock_atomic": 5
+            },
+            {
+              "variant_id": "00000000-0000-4000-8000-000000000002",
+              "name": "Grande",
+              "sku": null,
+              "barcode": null,
+              "sale_price_minor": 1000,
+              "standard_cost_minor": null,
+              "sort_order": 1,
+              "minimum_stock_atomic": 5
+            }
+          ],
+          "dependencies": []
+        }
+      }
+    },
+    {
+      "name": "positive-to-null",
+      "valid": true,
+      "payload": {
+        "base_event_id": "00000000-0000-4000-8000-000000000090",
+        "before": {
+          "product": {
+            "name": "Café",
+            "category_id": null,
+            "sale_configuration": {
+              "mode": "unit"
+            }
+          },
+          "variants": [
+            {
+              "variant_id": "00000000-0000-4000-8000-000000000001",
+              "name": "Chico",
+              "sku": null,
+              "barcode": null,
+              "sale_price_minor": 1000,
+              "standard_cost_minor": null,
+              "sort_order": 0,
+              "minimum_stock_atomic": 5
+            },
+            {
+              "variant_id": "00000000-0000-4000-8000-000000000002",
+              "name": "Grande",
+              "sku": null,
+              "barcode": null,
+              "sale_price_minor": 1000,
+              "standard_cost_minor": null,
+              "sort_order": 1,
+              "minimum_stock_atomic": 5
+            }
+          ],
+          "dependencies": []
+        },
+        "after": {
+          "product": {
+            "name": "Café",
+            "category_id": null,
+            "sale_configuration": {
+              "mode": "unit"
+            }
+          },
+          "variants": [
+            {
+              "variant_id": "00000000-0000-4000-8000-000000000001",
+              "name": "Chico",
+              "sku": null,
+              "barcode": null,
+              "sale_price_minor": 1000,
+              "standard_cost_minor": null,
+              "sort_order": 0,
+              "minimum_stock_atomic": null
+            },
+            {
+              "variant_id": "00000000-0000-4000-8000-000000000002",
+              "name": "Grande",
+              "sku": null,
+              "barcode": null,
+              "sale_price_minor": 1000,
+              "standard_cost_minor": null,
+              "sort_order": 1,
+              "minimum_stock_atomic": null
+            }
+          ],
+          "dependencies": []
+        }
+      }
+    },
+    {
+      "name": "legacy-to-null",
+      "valid": false,
+      "payload": {
+        "base_event_id": "00000000-0000-4000-8000-000000000090",
+        "before": {
+          "product": {
+            "name": "Café",
+            "category_id": null,
+            "sale_configuration": {
+              "mode": "unit"
+            }
+          },
+          "variants": [
+            {
+              "variant_id": "00000000-0000-4000-8000-000000000001",
+              "name": "Chico",
+              "sku": null,
+              "barcode": null,
+              "sale_price_minor": 1000,
+              "standard_cost_minor": null,
+              "sort_order": 0
+            },
+            {
+              "variant_id": "00000000-0000-4000-8000-000000000002",
+              "name": "Grande",
+              "sku": null,
+              "barcode": null,
+              "sale_price_minor": 1000,
+              "standard_cost_minor": null,
+              "sort_order": 1
+            }
+          ],
+          "dependencies": []
+        },
+        "after": {
+          "product": {
+            "name": "Café",
+            "category_id": null,
+            "sale_configuration": {
+              "mode": "unit"
+            }
+          },
+          "variants": [
+            {
+              "variant_id": "00000000-0000-4000-8000-000000000001",
+              "name": "Chico",
+              "sku": null,
+              "barcode": null,
+              "sale_price_minor": 1000,
+              "standard_cost_minor": null,
+              "sort_order": 0,
+              "minimum_stock_atomic": null
+            },
+            {
+              "variant_id": "00000000-0000-4000-8000-000000000002",
+              "name": "Grande",
+              "sku": null,
+              "barcode": null,
+              "sale_price_minor": 1000,
+              "standard_cost_minor": null,
+              "sort_order": 1,
+              "minimum_stock_atomic": null
+            }
+          ],
+          "dependencies": []
+        }
+      }
+    },
+    {
+      "name": "null-to-legacy",
+      "valid": false,
+      "payload": {
+        "base_event_id": "00000000-0000-4000-8000-000000000090",
+        "before": {
+          "product": {
+            "name": "Café",
+            "category_id": null,
+            "sale_configuration": {
+              "mode": "unit"
+            }
+          },
+          "variants": [
+            {
+              "variant_id": "00000000-0000-4000-8000-000000000001",
+              "name": "Chico",
+              "sku": null,
+              "barcode": null,
+              "sale_price_minor": 1000,
+              "standard_cost_minor": null,
+              "sort_order": 0,
+              "minimum_stock_atomic": null
+            },
+            {
+              "variant_id": "00000000-0000-4000-8000-000000000002",
+              "name": "Grande",
+              "sku": null,
+              "barcode": null,
+              "sale_price_minor": 1000,
+              "standard_cost_minor": null,
+              "sort_order": 1,
+              "minimum_stock_atomic": null
+            }
+          ],
+          "dependencies": []
+        },
+        "after": {
+          "product": {
+            "name": "Café",
+            "category_id": null,
+            "sale_configuration": {
+              "mode": "unit"
+            }
+          },
+          "variants": [
+            {
+              "variant_id": "00000000-0000-4000-8000-000000000001",
+              "name": "Chico",
+              "sku": null,
+              "barcode": null,
+              "sale_price_minor": 1000,
+              "standard_cost_minor": null,
+              "sort_order": 0
+            },
+            {
+              "variant_id": "00000000-0000-4000-8000-000000000002",
+              "name": "Grande",
+              "sku": null,
+              "barcode": null,
+              "sale_price_minor": 1000,
+              "standard_cost_minor": null,
+              "sort_order": 1
+            }
+          ],
+          "dependencies": []
+        }
+      }
+    },
+    {
+      "name": "positive-to-legacy",
+      "valid": false,
+      "payload": {
+        "base_event_id": "00000000-0000-4000-8000-000000000090",
+        "before": {
+          "product": {
+            "name": "Café",
+            "category_id": null,
+            "sale_configuration": {
+              "mode": "unit"
+            }
+          },
+          "variants": [
+            {
+              "variant_id": "00000000-0000-4000-8000-000000000001",
+              "name": "Chico",
+              "sku": null,
+              "barcode": null,
+              "sale_price_minor": 1000,
+              "standard_cost_minor": null,
+              "sort_order": 0,
+              "minimum_stock_atomic": 5
+            },
+            {
+              "variant_id": "00000000-0000-4000-8000-000000000002",
+              "name": "Grande",
+              "sku": null,
+              "barcode": null,
+              "sale_price_minor": 1000,
+              "standard_cost_minor": null,
+              "sort_order": 1,
+              "minimum_stock_atomic": 5
+            }
+          ],
+          "dependencies": []
+        },
+        "after": {
+          "product": {
+            "name": "Café",
+            "category_id": null,
+            "sale_configuration": {
+              "mode": "unit"
+            }
+          },
+          "variants": [
+            {
+              "variant_id": "00000000-0000-4000-8000-000000000001",
+              "name": "Chico",
+              "sku": null,
+              "barcode": null,
+              "sale_price_minor": 1000,
+              "standard_cost_minor": null,
+              "sort_order": 0
+            },
+            {
+              "variant_id": "00000000-0000-4000-8000-000000000002",
+              "name": "Grande",
+              "sku": null,
+              "barcode": null,
+              "sale_price_minor": 1000,
+              "standard_cost_minor": null,
+              "sort_order": 1
+            }
+          ],
+          "dependencies": []
+        }
+      }
+    },
+    {
+      "name": "delete-legacy",
+      "valid": true,
+      "payload": {
+        "base_event_id": "00000000-0000-4000-8000-000000000090",
+        "before": {
+          "product": {
+            "name": "Café",
+            "category_id": null,
+            "sale_configuration": {
+              "mode": "unit"
+            }
+          },
+          "variants": [
+            {
+              "variant_id": "00000000-0000-4000-8000-000000000001",
+              "name": "Chico",
+              "sku": null,
+              "barcode": null,
+              "sale_price_minor": 1000,
+              "standard_cost_minor": null,
+              "sort_order": 0
+            },
+            {
+              "variant_id": "00000000-0000-4000-8000-000000000002",
+              "name": "Grande",
+              "sku": null,
+              "barcode": null,
+              "sale_price_minor": 1000,
+              "standard_cost_minor": null,
+              "sort_order": 1
+            }
+          ],
+          "dependencies": []
+        },
+        "delete_product": true,
+        "after": null
+      }
+    },
+    {
+      "name": "delete-null",
+      "valid": true,
+      "payload": {
+        "base_event_id": "00000000-0000-4000-8000-000000000090",
+        "before": {
+          "product": {
+            "name": "Café",
+            "category_id": null,
+            "sale_configuration": {
+              "mode": "unit"
+            }
+          },
+          "variants": [
+            {
+              "variant_id": "00000000-0000-4000-8000-000000000001",
+              "name": "Chico",
+              "sku": null,
+              "barcode": null,
+              "sale_price_minor": 1000,
+              "standard_cost_minor": null,
+              "sort_order": 0,
+              "minimum_stock_atomic": null
+            },
+            {
+              "variant_id": "00000000-0000-4000-8000-000000000002",
+              "name": "Grande",
+              "sku": null,
+              "barcode": null,
+              "sale_price_minor": 1000,
+              "standard_cost_minor": null,
+              "sort_order": 1,
+              "minimum_stock_atomic": null
+            }
+          ],
+          "dependencies": []
+        },
+        "delete_product": true,
+        "after": null
+      }
+    },
+    {
+      "name": "delete-positive",
+      "valid": true,
+      "payload": {
+        "base_event_id": "00000000-0000-4000-8000-000000000090",
+        "before": {
+          "product": {
+            "name": "Café",
+            "category_id": null,
+            "sale_configuration": {
+              "mode": "unit"
+            }
+          },
+          "variants": [
+            {
+              "variant_id": "00000000-0000-4000-8000-000000000001",
+              "name": "Chico",
+              "sku": null,
+              "barcode": null,
+              "sale_price_minor": 1000,
+              "standard_cost_minor": null,
+              "sort_order": 0,
+              "minimum_stock_atomic": 5
+            },
+            {
+              "variant_id": "00000000-0000-4000-8000-000000000002",
+              "name": "Grande",
+              "sku": null,
+              "barcode": null,
+              "sale_price_minor": 1000,
+              "standard_cost_minor": null,
+              "sort_order": 1,
+              "minimum_stock_atomic": 5
+            }
+          ],
+          "dependencies": []
+        },
+        "delete_product": true,
+        "after": null
+      }
+    }
+  ],
+  "comparisons": [
+    {
+      "name": "legacy-vs-legacy",
+      "current": {
+        "product": {
+          "name": "Café",
+          "category_id": null,
+          "sale_configuration": {
+            "mode": "unit"
+          }
+        },
+        "variants": [
+          {
+            "variant_id": "00000000-0000-4000-8000-000000000001",
+            "name": "Chico",
+            "sku": null,
+            "barcode": null,
+            "sale_price_minor": 1000,
+            "standard_cost_minor": null,
+            "sort_order": 0
+          },
+          {
+            "variant_id": "00000000-0000-4000-8000-000000000002",
+            "name": "Grande",
+            "sku": null,
+            "barcode": null,
+            "sale_price_minor": 1000,
+            "standard_cost_minor": null,
+            "sort_order": 1
+          }
+        ],
+        "dependencies": []
+      },
+      "before": {
+        "product": {
+          "name": "Café",
+          "category_id": null,
+          "sale_configuration": {
+            "mode": "unit"
+          }
+        },
+        "variants": [
+          {
+            "variant_id": "00000000-0000-4000-8000-000000000001",
+            "name": "Chico",
+            "sku": null,
+            "barcode": null,
+            "sale_price_minor": 1000,
+            "standard_cost_minor": null,
+            "sort_order": 0
+          },
+          {
+            "variant_id": "00000000-0000-4000-8000-000000000002",
+            "name": "Grande",
+            "sku": null,
+            "barcode": null,
+            "sale_price_minor": 1000,
+            "standard_cost_minor": null,
+            "sort_order": 1
+          }
+        ],
+        "dependencies": []
+      },
+      "same_state": true,
+      "same_base": true
+    },
+    {
+      "name": "legacy-vs-null",
+      "current": {
+        "product": {
+          "name": "Café",
+          "category_id": null,
+          "sale_configuration": {
+            "mode": "unit"
+          }
+        },
+        "variants": [
+          {
+            "variant_id": "00000000-0000-4000-8000-000000000001",
+            "name": "Chico",
+            "sku": null,
+            "barcode": null,
+            "sale_price_minor": 1000,
+            "standard_cost_minor": null,
+            "sort_order": 0
+          },
+          {
+            "variant_id": "00000000-0000-4000-8000-000000000002",
+            "name": "Grande",
+            "sku": null,
+            "barcode": null,
+            "sale_price_minor": 1000,
+            "standard_cost_minor": null,
+            "sort_order": 1
+          }
+        ],
+        "dependencies": []
+      },
+      "before": {
+        "product": {
+          "name": "Café",
+          "category_id": null,
+          "sale_configuration": {
+            "mode": "unit"
+          }
+        },
+        "variants": [
+          {
+            "variant_id": "00000000-0000-4000-8000-000000000001",
+            "name": "Chico",
+            "sku": null,
+            "barcode": null,
+            "sale_price_minor": 1000,
+            "standard_cost_minor": null,
+            "sort_order": 0,
+            "minimum_stock_atomic": null
+          },
+          {
+            "variant_id": "00000000-0000-4000-8000-000000000002",
+            "name": "Grande",
+            "sku": null,
+            "barcode": null,
+            "sale_price_minor": 1000,
+            "standard_cost_minor": null,
+            "sort_order": 1,
+            "minimum_stock_atomic": null
+          }
+        ],
+        "dependencies": []
+      },
+      "same_state": true,
+      "same_base": true
+    },
+    {
+      "name": "null-vs-legacy",
+      "current": {
+        "product": {
+          "name": "Café",
+          "category_id": null,
+          "sale_configuration": {
+            "mode": "unit"
+          }
+        },
+        "variants": [
+          {
+            "variant_id": "00000000-0000-4000-8000-000000000001",
+            "name": "Chico",
+            "sku": null,
+            "barcode": null,
+            "sale_price_minor": 1000,
+            "standard_cost_minor": null,
+            "sort_order": 0,
+            "minimum_stock_atomic": null
+          },
+          {
+            "variant_id": "00000000-0000-4000-8000-000000000002",
+            "name": "Grande",
+            "sku": null,
+            "barcode": null,
+            "sale_price_minor": 1000,
+            "standard_cost_minor": null,
+            "sort_order": 1,
+            "minimum_stock_atomic": null
+          }
+        ],
+        "dependencies": []
+      },
+      "before": {
+        "product": {
+          "name": "Café",
+          "category_id": null,
+          "sale_configuration": {
+            "mode": "unit"
+          }
+        },
+        "variants": [
+          {
+            "variant_id": "00000000-0000-4000-8000-000000000001",
+            "name": "Chico",
+            "sku": null,
+            "barcode": null,
+            "sale_price_minor": 1000,
+            "standard_cost_minor": null,
+            "sort_order": 0
+          },
+          {
+            "variant_id": "00000000-0000-4000-8000-000000000002",
+            "name": "Grande",
+            "sku": null,
+            "barcode": null,
+            "sale_price_minor": 1000,
+            "standard_cost_minor": null,
+            "sort_order": 1
+          }
+        ],
+        "dependencies": []
+      },
+      "same_state": true,
+      "same_base": false
+    },
+    {
+      "name": "positive-vs-legacy",
+      "current": {
+        "product": {
+          "name": "Café",
+          "category_id": null,
+          "sale_configuration": {
+            "mode": "unit"
+          }
+        },
+        "variants": [
+          {
+            "variant_id": "00000000-0000-4000-8000-000000000001",
+            "name": "Chico",
+            "sku": null,
+            "barcode": null,
+            "sale_price_minor": 1000,
+            "standard_cost_minor": null,
+            "sort_order": 0,
+            "minimum_stock_atomic": 5
+          },
+          {
+            "variant_id": "00000000-0000-4000-8000-000000000002",
+            "name": "Grande",
+            "sku": null,
+            "barcode": null,
+            "sale_price_minor": 1000,
+            "standard_cost_minor": null,
+            "sort_order": 1,
+            "minimum_stock_atomic": 5
+          }
+        ],
+        "dependencies": []
+      },
+      "before": {
+        "product": {
+          "name": "Café",
+          "category_id": null,
+          "sale_configuration": {
+            "mode": "unit"
+          }
+        },
+        "variants": [
+          {
+            "variant_id": "00000000-0000-4000-8000-000000000001",
+            "name": "Chico",
+            "sku": null,
+            "barcode": null,
+            "sale_price_minor": 1000,
+            "standard_cost_minor": null,
+            "sort_order": 0
+          },
+          {
+            "variant_id": "00000000-0000-4000-8000-000000000002",
+            "name": "Grande",
+            "sku": null,
+            "barcode": null,
+            "sale_price_minor": 1000,
+            "standard_cost_minor": null,
+            "sort_order": 1
+          }
+        ],
+        "dependencies": []
+      },
+      "same_state": false,
+      "same_base": false
+    },
+    {
+      "name": "legacy-vs-positive",
+      "current": {
+        "product": {
+          "name": "Café",
+          "category_id": null,
+          "sale_configuration": {
+            "mode": "unit"
+          }
+        },
+        "variants": [
+          {
+            "variant_id": "00000000-0000-4000-8000-000000000001",
+            "name": "Chico",
+            "sku": null,
+            "barcode": null,
+            "sale_price_minor": 1000,
+            "standard_cost_minor": null,
+            "sort_order": 0
+          },
+          {
+            "variant_id": "00000000-0000-4000-8000-000000000002",
+            "name": "Grande",
+            "sku": null,
+            "barcode": null,
+            "sale_price_minor": 1000,
+            "standard_cost_minor": null,
+            "sort_order": 1
+          }
+        ],
+        "dependencies": []
+      },
+      "before": {
+        "product": {
+          "name": "Café",
+          "category_id": null,
+          "sale_configuration": {
+            "mode": "unit"
+          }
+        },
+        "variants": [
+          {
+            "variant_id": "00000000-0000-4000-8000-000000000001",
+            "name": "Chico",
+            "sku": null,
+            "barcode": null,
+            "sale_price_minor": 1000,
+            "standard_cost_minor": null,
+            "sort_order": 0,
+            "minimum_stock_atomic": 5
+          },
+          {
+            "variant_id": "00000000-0000-4000-8000-000000000002",
+            "name": "Grande",
+            "sku": null,
+            "barcode": null,
+            "sale_price_minor": 1000,
+            "standard_cost_minor": null,
+            "sort_order": 1,
+            "minimum_stock_atomic": 5
+          }
+        ],
+        "dependencies": []
+      },
+      "same_state": false,
+      "same_base": false
+    },
+    {
+      "name": "positive-vs-positive",
+      "current": {
+        "product": {
+          "name": "Café",
+          "category_id": null,
+          "sale_configuration": {
+            "mode": "unit"
+          }
+        },
+        "variants": [
+          {
+            "variant_id": "00000000-0000-4000-8000-000000000001",
+            "name": "Chico",
+            "sku": null,
+            "barcode": null,
+            "sale_price_minor": 1000,
+            "standard_cost_minor": null,
+            "sort_order": 0,
+            "minimum_stock_atomic": 5
+          },
+          {
+            "variant_id": "00000000-0000-4000-8000-000000000002",
+            "name": "Grande",
+            "sku": null,
+            "barcode": null,
+            "sale_price_minor": 1000,
+            "standard_cost_minor": null,
+            "sort_order": 1,
+            "minimum_stock_atomic": 5
+          }
+        ],
+        "dependencies": []
+      },
+      "before": {
+        "product": {
+          "name": "Café",
+          "category_id": null,
+          "sale_configuration": {
+            "mode": "unit"
+          }
+        },
+        "variants": [
+          {
+            "variant_id": "00000000-0000-4000-8000-000000000001",
+            "name": "Chico",
+            "sku": null,
+            "barcode": null,
+            "sale_price_minor": 1000,
+            "standard_cost_minor": null,
+            "sort_order": 0,
+            "minimum_stock_atomic": 5
+          },
+          {
+            "variant_id": "00000000-0000-4000-8000-000000000002",
+            "name": "Grande",
+            "sku": null,
+            "barcode": null,
+            "sale_price_minor": 1000,
+            "standard_cost_minor": null,
+            "sort_order": 1,
+            "minimum_stock_atomic": 5
+          }
+        ],
+        "dependencies": []
+      },
+      "same_state": true,
+      "same_base": true
+    },
+    {
+      "name": "positive-vs-zero",
+      "current": {
+        "product": {
+          "name": "Café",
+          "category_id": null,
+          "sale_configuration": {
+            "mode": "unit"
+          }
+        },
+        "variants": [
+          {
+            "variant_id": "00000000-0000-4000-8000-000000000001",
+            "name": "Chico",
+            "sku": null,
+            "barcode": null,
+            "sale_price_minor": 1000,
+            "standard_cost_minor": null,
+            "sort_order": 0,
+            "minimum_stock_atomic": 5
+          },
+          {
+            "variant_id": "00000000-0000-4000-8000-000000000002",
+            "name": "Grande",
+            "sku": null,
+            "barcode": null,
+            "sale_price_minor": 1000,
+            "standard_cost_minor": null,
+            "sort_order": 1,
+            "minimum_stock_atomic": 5
+          }
+        ],
+        "dependencies": []
+      },
+      "before": {
+        "product": {
+          "name": "Café",
+          "category_id": null,
+          "sale_configuration": {
+            "mode": "unit"
+          }
+        },
+        "variants": [
+          {
+            "variant_id": "00000000-0000-4000-8000-000000000001",
+            "name": "Chico",
+            "sku": null,
+            "barcode": null,
+            "sale_price_minor": 1000,
+            "standard_cost_minor": null,
+            "sort_order": 0,
+            "minimum_stock_atomic": 0
+          },
+          {
+            "variant_id": "00000000-0000-4000-8000-000000000002",
+            "name": "Grande",
+            "sku": null,
+            "barcode": null,
+            "sale_price_minor": 1000,
+            "standard_cost_minor": null,
+            "sort_order": 1,
+            "minimum_stock_atomic": 0
+          }
+        ],
+        "dependencies": []
+      },
+      "same_state": false,
+      "same_base": false
+    },
+    {
+      "name": "positive-vs-null",
+      "current": {
+        "product": {
+          "name": "Café",
+          "category_id": null,
+          "sale_configuration": {
+            "mode": "unit"
+          }
+        },
+        "variants": [
+          {
+            "variant_id": "00000000-0000-4000-8000-000000000001",
+            "name": "Chico",
+            "sku": null,
+            "barcode": null,
+            "sale_price_minor": 1000,
+            "standard_cost_minor": null,
+            "sort_order": 0,
+            "minimum_stock_atomic": 5
+          },
+          {
+            "variant_id": "00000000-0000-4000-8000-000000000002",
+            "name": "Grande",
+            "sku": null,
+            "barcode": null,
+            "sale_price_minor": 1000,
+            "standard_cost_minor": null,
+            "sort_order": 1,
+            "minimum_stock_atomic": 5
+          }
+        ],
+        "dependencies": []
+      },
+      "before": {
+        "product": {
+          "name": "Café",
+          "category_id": null,
+          "sale_configuration": {
+            "mode": "unit"
+          }
+        },
+        "variants": [
+          {
+            "variant_id": "00000000-0000-4000-8000-000000000001",
+            "name": "Chico",
+            "sku": null,
+            "barcode": null,
+            "sale_price_minor": 1000,
+            "standard_cost_minor": null,
+            "sort_order": 0,
+            "minimum_stock_atomic": null
+          },
+          {
+            "variant_id": "00000000-0000-4000-8000-000000000002",
+            "name": "Grande",
+            "sku": null,
+            "barcode": null,
+            "sale_price_minor": 1000,
+            "standard_cost_minor": null,
+            "sort_order": 1,
+            "minimum_stock_atomic": null
+          }
+        ],
+        "dependencies": []
+      },
+      "same_state": false,
+      "same_base": false
+    },
+    {
+      "name": "promote-both",
+      "current": {
+        "product": {
+          "name": "Café",
+          "category_id": null,
+          "sale_configuration": {
+            "mode": "unit"
+          }
+        },
+        "variants": [
+          {
+            "variant_id": "00000000-0000-4000-8000-000000000001",
+            "name": "Chico",
+            "sku": null,
+            "barcode": null,
+            "sale_price_minor": 1000,
+            "standard_cost_minor": null,
+            "sort_order": 0
+          },
+          {
+            "variant_id": "00000000-0000-4000-8000-000000000002",
+            "name": "Grande",
+            "sku": null,
+            "barcode": null,
+            "sale_price_minor": 1000,
+            "standard_cost_minor": null,
+            "sort_order": 1
+          }
+        ],
+        "dependencies": []
+      },
+      "before": {
+        "product": {
+          "name": "Café",
+          "category_id": null,
+          "sale_configuration": {
+            "mode": "unit"
+          }
+        },
+        "variants": [
+          {
+            "variant_id": "00000000-0000-4000-8000-000000000001",
+            "name": "Chico",
+            "sku": null,
+            "barcode": null,
+            "sale_price_minor": 1000,
+            "standard_cost_minor": null,
+            "sort_order": 0,
+            "minimum_stock_atomic": null,
+            "suppliers": []
+          },
+          {
+            "variant_id": "00000000-0000-4000-8000-000000000002",
+            "name": "Grande",
+            "sku": null,
+            "barcode": null,
+            "sale_price_minor": 1000,
+            "standard_cost_minor": null,
+            "sort_order": 1,
+            "minimum_stock_atomic": null,
+            "suppliers": []
+          }
+        ],
+        "dependencies": []
+      },
+      "same_state": false,
+      "same_base": true
+    },
+    {
+      "name": "supplier-value",
+      "current": {
+        "product": {
+          "name": "Café",
+          "category_id": null,
+          "sale_configuration": {
+            "mode": "unit"
+          }
+        },
+        "variants": [
+          {
+            "variant_id": "00000000-0000-4000-8000-000000000001",
+            "name": "Chico",
+            "sku": null,
+            "barcode": null,
+            "sale_price_minor": 1000,
+            "standard_cost_minor": null,
+            "sort_order": 0
+          },
+          {
+            "variant_id": "00000000-0000-4000-8000-000000000002",
+            "name": "Grande",
+            "sku": null,
+            "barcode": null,
+            "sale_price_minor": 1000,
+            "standard_cost_minor": null,
+            "sort_order": 1
+          }
+        ],
+        "dependencies": []
+      },
+      "before": {
+        "product": {
+          "name": "Café",
+          "category_id": null,
+          "sale_configuration": {
+            "mode": "unit"
+          }
+        },
+        "variants": [
+          {
+            "variant_id": "00000000-0000-4000-8000-000000000001",
+            "name": "Chico",
+            "sku": null,
+            "barcode": null,
+            "sale_price_minor": 1000,
+            "standard_cost_minor": null,
+            "sort_order": 0,
+            "minimum_stock_atomic": null,
+            "suppliers": [
+              {
+                "supplier_id": "00000000-0000-4000-8000-000000000030",
+                "quoted_price_minor": 0,
+                "quoted_at_ms": 1792368000000
+              }
+            ]
+          },
+          {
+            "variant_id": "00000000-0000-4000-8000-000000000002",
+            "name": "Grande",
+            "sku": null,
+            "barcode": null,
+            "sale_price_minor": 1000,
+            "standard_cost_minor": null,
+            "sort_order": 1,
+            "minimum_stock_atomic": null,
+            "suppliers": []
+          }
+        ],
+        "dependencies": [
+          {
+            "ref_type": "supplier",
+            "ref_id": "00000000-0000-4000-8000-000000000030"
+          }
+        ]
+      },
+      "same_state": false,
+      "same_base": false
+    },
+    {
+      "name": "supplier-degrade",
+      "current": {
+        "product": {
+          "name": "Café",
+          "category_id": null,
+          "sale_configuration": {
+            "mode": "unit"
+          }
+        },
+        "variants": [
+          {
+            "variant_id": "00000000-0000-4000-8000-000000000001",
+            "name": "Chico",
+            "sku": null,
+            "barcode": null,
+            "sale_price_minor": 1000,
+            "standard_cost_minor": null,
+            "sort_order": 0,
+            "minimum_stock_atomic": null,
+            "suppliers": []
+          },
+          {
+            "variant_id": "00000000-0000-4000-8000-000000000002",
+            "name": "Grande",
+            "sku": null,
+            "barcode": null,
+            "sale_price_minor": 1000,
+            "standard_cost_minor": null,
+            "sort_order": 1,
+            "minimum_stock_atomic": null,
+            "suppliers": []
+          }
+        ],
+        "dependencies": []
+      },
+      "before": {
+        "product": {
+          "name": "Café",
+          "category_id": null,
+          "sale_configuration": {
+            "mode": "unit"
+          }
+        },
+        "variants": [
+          {
+            "variant_id": "00000000-0000-4000-8000-000000000001",
+            "name": "Chico",
+            "sku": null,
+            "barcode": null,
+            "sale_price_minor": 1000,
+            "standard_cost_minor": null,
+            "sort_order": 0
+          },
+          {
+            "variant_id": "00000000-0000-4000-8000-000000000002",
+            "name": "Grande",
+            "sku": null,
+            "barcode": null,
+            "sale_price_minor": 1000,
+            "standard_cost_minor": null,
+            "sort_order": 1
+          }
+        ],
+        "dependencies": []
+      },
+      "same_state": false,
+      "same_base": false
+    },
+    {
+      "name": "changed-product-name",
+      "current": {
+        "product": {
+          "name": "Café",
+          "category_id": null,
+          "sale_configuration": {
+            "mode": "unit"
+          }
+        },
+        "variants": [
+          {
+            "variant_id": "00000000-0000-4000-8000-000000000001",
+            "name": "Chico",
+            "sku": null,
+            "barcode": null,
+            "sale_price_minor": 1000,
+            "standard_cost_minor": null,
+            "sort_order": 0
+          },
+          {
+            "variant_id": "00000000-0000-4000-8000-000000000002",
+            "name": "Grande",
+            "sku": null,
+            "barcode": null,
+            "sale_price_minor": 1000,
+            "standard_cost_minor": null,
+            "sort_order": 1
+          }
+        ],
+        "dependencies": []
+      },
+      "before": {
+        "product": {
+          "name": "Otro",
+          "category_id": null,
+          "sale_configuration": {
+            "mode": "unit"
+          }
+        },
+        "variants": [
+          {
+            "variant_id": "00000000-0000-4000-8000-000000000001",
+            "name": "Chico",
+            "sku": null,
+            "barcode": null,
+            "sale_price_minor": 1000,
+            "standard_cost_minor": null,
+            "sort_order": 0,
+            "minimum_stock_atomic": null
+          },
+          {
+            "variant_id": "00000000-0000-4000-8000-000000000002",
+            "name": "Grande",
+            "sku": null,
+            "barcode": null,
+            "sale_price_minor": 1000,
+            "standard_cost_minor": null,
+            "sort_order": 1,
+            "minimum_stock_atomic": null
+          }
+        ],
+        "dependencies": []
+      },
+      "same_state": false,
+      "same_base": false
+    },
+    {
+      "name": "changed-product-category_id",
+      "current": {
+        "product": {
+          "name": "Café",
+          "category_id": null,
+          "sale_configuration": {
+            "mode": "unit"
+          }
+        },
+        "variants": [
+          {
+            "variant_id": "00000000-0000-4000-8000-000000000001",
+            "name": "Chico",
+            "sku": null,
+            "barcode": null,
+            "sale_price_minor": 1000,
+            "standard_cost_minor": null,
+            "sort_order": 0
+          },
+          {
+            "variant_id": "00000000-0000-4000-8000-000000000002",
+            "name": "Grande",
+            "sku": null,
+            "barcode": null,
+            "sale_price_minor": 1000,
+            "standard_cost_minor": null,
+            "sort_order": 1
+          }
+        ],
+        "dependencies": []
+      },
+      "before": {
+        "product": {
+          "name": "Café",
+          "category_id": "00000000-0000-4000-8000-000000000040",
+          "sale_configuration": {
+            "mode": "unit"
+          }
+        },
+        "variants": [
+          {
+            "variant_id": "00000000-0000-4000-8000-000000000001",
+            "name": "Chico",
+            "sku": null,
+            "barcode": null,
+            "sale_price_minor": 1000,
+            "standard_cost_minor": null,
+            "sort_order": 0,
+            "minimum_stock_atomic": null
+          },
+          {
+            "variant_id": "00000000-0000-4000-8000-000000000002",
+            "name": "Grande",
+            "sku": null,
+            "barcode": null,
+            "sale_price_minor": 1000,
+            "standard_cost_minor": null,
+            "sort_order": 1,
+            "minimum_stock_atomic": null
+          }
+        ],
+        "dependencies": []
+      },
+      "same_state": false,
+      "same_base": false
+    },
+    {
+      "name": "changed-variant-barcode",
+      "current": {
+        "product": {
+          "name": "Café",
+          "category_id": null,
+          "sale_configuration": {
+            "mode": "unit"
+          }
+        },
+        "variants": [
+          {
+            "variant_id": "00000000-0000-4000-8000-000000000001",
+            "name": "Chico",
+            "sku": null,
+            "barcode": null,
+            "sale_price_minor": 1000,
+            "standard_cost_minor": null,
+            "sort_order": 0
+          },
+          {
+            "variant_id": "00000000-0000-4000-8000-000000000002",
+            "name": "Grande",
+            "sku": null,
+            "barcode": null,
+            "sale_price_minor": 1000,
+            "standard_cost_minor": null,
+            "sort_order": 1
+          }
+        ],
+        "dependencies": []
+      },
+      "before": {
+        "product": {
+          "name": "Café",
+          "category_id": null,
+          "sale_configuration": {
+            "mode": "unit"
+          }
+        },
+        "variants": [
+          {
+            "variant_id": "00000000-0000-4000-8000-000000000001",
+            "name": "Chico",
+            "sku": null,
+            "barcode": "001234",
+            "sale_price_minor": 1000,
+            "standard_cost_minor": null,
+            "sort_order": 0,
+            "minimum_stock_atomic": null
+          },
+          {
+            "variant_id": "00000000-0000-4000-8000-000000000002",
+            "name": "Grande",
+            "sku": null,
+            "barcode": null,
+            "sale_price_minor": 1000,
+            "standard_cost_minor": null,
+            "sort_order": 1,
+            "minimum_stock_atomic": null
+          }
+        ],
+        "dependencies": []
+      },
+      "same_state": false,
+      "same_base": false
+    },
+    {
+      "name": "changed-variant-sale_price_minor",
+      "current": {
+        "product": {
+          "name": "Café",
+          "category_id": null,
+          "sale_configuration": {
+            "mode": "unit"
+          }
+        },
+        "variants": [
+          {
+            "variant_id": "00000000-0000-4000-8000-000000000001",
+            "name": "Chico",
+            "sku": null,
+            "barcode": null,
+            "sale_price_minor": 1000,
+            "standard_cost_minor": null,
+            "sort_order": 0
+          },
+          {
+            "variant_id": "00000000-0000-4000-8000-000000000002",
+            "name": "Grande",
+            "sku": null,
+            "barcode": null,
+            "sale_price_minor": 1000,
+            "standard_cost_minor": null,
+            "sort_order": 1
+          }
+        ],
+        "dependencies": []
+      },
+      "before": {
+        "product": {
+          "name": "Café",
+          "category_id": null,
+          "sale_configuration": {
+            "mode": "unit"
+          }
+        },
+        "variants": [
+          {
+            "variant_id": "00000000-0000-4000-8000-000000000001",
+            "name": "Chico",
+            "sku": null,
+            "barcode": null,
+            "sale_price_minor": 2000,
+            "standard_cost_minor": null,
+            "sort_order": 0,
+            "minimum_stock_atomic": null
+          },
+          {
+            "variant_id": "00000000-0000-4000-8000-000000000002",
+            "name": "Grande",
+            "sku": null,
+            "barcode": null,
+            "sale_price_minor": 1000,
+            "standard_cost_minor": null,
+            "sort_order": 1,
+            "minimum_stock_atomic": null
+          }
+        ],
+        "dependencies": []
+      },
+      "same_state": false,
+      "same_base": false
+    },
+    {
+      "name": "changed-variant-standard_cost_minor",
+      "current": {
+        "product": {
+          "name": "Café",
+          "category_id": null,
+          "sale_configuration": {
+            "mode": "unit"
+          }
+        },
+        "variants": [
+          {
+            "variant_id": "00000000-0000-4000-8000-000000000001",
+            "name": "Chico",
+            "sku": null,
+            "barcode": null,
+            "sale_price_minor": 1000,
+            "standard_cost_minor": null,
+            "sort_order": 0
+          },
+          {
+            "variant_id": "00000000-0000-4000-8000-000000000002",
+            "name": "Grande",
+            "sku": null,
+            "barcode": null,
+            "sale_price_minor": 1000,
+            "standard_cost_minor": null,
+            "sort_order": 1
+          }
+        ],
+        "dependencies": []
+      },
+      "before": {
+        "product": {
+          "name": "Café",
+          "category_id": null,
+          "sale_configuration": {
+            "mode": "unit"
+          }
+        },
+        "variants": [
+          {
+            "variant_id": "00000000-0000-4000-8000-000000000001",
+            "name": "Chico",
+            "sku": null,
+            "barcode": null,
+            "sale_price_minor": 1000,
+            "standard_cost_minor": 0,
+            "sort_order": 0,
+            "minimum_stock_atomic": null
+          },
+          {
+            "variant_id": "00000000-0000-4000-8000-000000000002",
+            "name": "Grande",
+            "sku": null,
+            "barcode": null,
+            "sale_price_minor": 1000,
+            "standard_cost_minor": null,
+            "sort_order": 1,
+            "minimum_stock_atomic": null
+          }
+        ],
+        "dependencies": []
+      },
+      "same_state": false,
+      "same_base": false
+    },
+    {
+      "name": "changed-variant-name",
+      "current": {
+        "product": {
+          "name": "Café",
+          "category_id": null,
+          "sale_configuration": {
+            "mode": "unit"
+          }
+        },
+        "variants": [
+          {
+            "variant_id": "00000000-0000-4000-8000-000000000001",
+            "name": "Chico",
+            "sku": null,
+            "barcode": null,
+            "sale_price_minor": 1000,
+            "standard_cost_minor": null,
+            "sort_order": 0
+          },
+          {
+            "variant_id": "00000000-0000-4000-8000-000000000002",
+            "name": "Grande",
+            "sku": null,
+            "barcode": null,
+            "sale_price_minor": 1000,
+            "standard_cost_minor": null,
+            "sort_order": 1
+          }
+        ],
+        "dependencies": []
+      },
+      "before": {
+        "product": {
+          "name": "Café",
+          "category_id": null,
+          "sale_configuration": {
+            "mode": "unit"
+          }
+        },
+        "variants": [
+          {
+            "variant_id": "00000000-0000-4000-8000-000000000001",
+            "name": "Mediano",
+            "sku": null,
+            "barcode": null,
+            "sale_price_minor": 1000,
+            "standard_cost_minor": null,
+            "sort_order": 0,
+            "minimum_stock_atomic": null
+          },
+          {
+            "variant_id": "00000000-0000-4000-8000-000000000002",
+            "name": "Grande",
+            "sku": null,
+            "barcode": null,
+            "sale_price_minor": 1000,
+            "standard_cost_minor": null,
+            "sort_order": 1,
+            "minimum_stock_atomic": null
+          }
+        ],
+        "dependencies": []
+      },
+      "same_state": false,
+      "same_base": false
+    },
+    {
+      "name": "changed-variant-minimum_stock_atomic",
+      "current": {
+        "product": {
+          "name": "Café",
+          "category_id": null,
+          "sale_configuration": {
+            "mode": "unit"
+          }
+        },
+        "variants": [
+          {
+            "variant_id": "00000000-0000-4000-8000-000000000001",
+            "name": "Chico",
+            "sku": null,
+            "barcode": null,
+            "sale_price_minor": 1000,
+            "standard_cost_minor": null,
+            "sort_order": 0
+          },
+          {
+            "variant_id": "00000000-0000-4000-8000-000000000002",
+            "name": "Grande",
+            "sku": null,
+            "barcode": null,
+            "sale_price_minor": 1000,
+            "standard_cost_minor": null,
+            "sort_order": 1
+          }
+        ],
+        "dependencies": []
+      },
+      "before": {
+        "product": {
+          "name": "Café",
+          "category_id": null,
+          "sale_configuration": {
+            "mode": "unit"
+          }
+        },
+        "variants": [
+          {
+            "variant_id": "00000000-0000-4000-8000-000000000001",
+            "name": "Chico",
+            "sku": null,
+            "barcode": null,
+            "sale_price_minor": 1000,
+            "standard_cost_minor": null,
+            "sort_order": 0,
+            "minimum_stock_atomic": 1
+          },
+          {
+            "variant_id": "00000000-0000-4000-8000-000000000002",
+            "name": "Grande",
+            "sku": null,
+            "barcode": null,
+            "sale_price_minor": 1000,
+            "standard_cost_minor": null,
+            "sort_order": 1,
+            "minimum_stock_atomic": null
+          }
+        ],
+        "dependencies": []
+      },
+      "same_state": false,
+      "same_base": false
+    },
+    {
+      "name": "changed-order",
+      "current": {
+        "product": {
+          "name": "Café",
+          "category_id": null,
+          "sale_configuration": {
+            "mode": "unit"
+          }
+        },
+        "variants": [
+          {
+            "variant_id": "00000000-0000-4000-8000-000000000001",
+            "name": "Chico",
+            "sku": null,
+            "barcode": null,
+            "sale_price_minor": 1000,
+            "standard_cost_minor": null,
+            "sort_order": 0
+          },
+          {
+            "variant_id": "00000000-0000-4000-8000-000000000002",
+            "name": "Grande",
+            "sku": null,
+            "barcode": null,
+            "sale_price_minor": 1000,
+            "standard_cost_minor": null,
+            "sort_order": 1
+          }
+        ],
+        "dependencies": []
+      },
+      "before": {
+        "product": {
+          "name": "Café",
+          "category_id": null,
+          "sale_configuration": {
+            "mode": "unit"
+          }
+        },
+        "variants": [
+          {
+            "variant_id": "00000000-0000-4000-8000-000000000002",
+            "name": "Grande",
+            "sku": null,
+            "barcode": null,
+            "sale_price_minor": 1000,
+            "standard_cost_minor": null,
+            "sort_order": 0,
+            "minimum_stock_atomic": null
+          },
+          {
+            "variant_id": "00000000-0000-4000-8000-000000000001",
+            "name": "Chico",
+            "sku": null,
+            "barcode": null,
+            "sale_price_minor": 1000,
+            "standard_cost_minor": null,
+            "sort_order": 1,
+            "minimum_stock_atomic": null
+          }
+        ],
+        "dependencies": []
+      },
+      "same_state": false,
+      "same_base": false
+    }
+  ]
+}

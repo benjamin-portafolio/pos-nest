@@ -905,6 +905,297 @@ integration(
       await createProduct();
       expect(await db.manager.count(VariantSupplierEntity)).toBe(2);
     });
+    describe('mínimos: receptor y protocolo sobre PostgreSQL real', () => {
+      function minima(json: Record<string, any>, value: number | null) {
+        for (const v of json.variants) v.minimum_stock_atomic = value;
+      }
+      async function rows() {
+        return {
+          products: await db.manager.find(ProductEntity),
+          variants: await db.manager.find(ProductVariantEntity, {
+            order: { id: 'ASC' },
+          }),
+          suppliers: await db.manager.find(VariantSupplierEntity),
+          inventory: await db.manager.find(InventoryItemEntity),
+          balances: await db.manager.find(InventoryBalanceEntity),
+          movements: await db.manager.find(InventoryMovementEntity),
+          sales: await db.manager.find(SaleEntity),
+        };
+      }
+      for (const value of [undefined, null, 0, 1500, 9007199254740991]) {
+        it(`alta/canónico/pull/reentrega conserva ${value}`, async () => {
+          const create = await createProduct('producto_legado', (json) => {
+            if (value !== undefined) minima(json, value);
+          });
+          expect((await rows()).variants[0].minimumStockAtomic).toBe(
+            value == null ? null : String(value),
+          );
+          const state = await acceptedPayload(create.event_id);
+          expect(Object.hasOwn(state.variants[0], 'minimum_stock_atomic')).toBe(
+            value !== undefined,
+          );
+          if (value !== undefined)
+            expect(state.variants[0].minimum_stock_atomic).toBe(value);
+          const before = await rows();
+          const duplicate = await push(create);
+          expect(duplicate.status).toBe('duplicate');
+          expect(duplicate.original_sync_status).toBe('synced');
+          expect(await rows()).toEqual(before);
+          const pulled = (await service.pullEvents({ since: 0 })).events.find(
+            (e) => e.event_id === create.event_id,
+          )!;
+          expect(pulled.payload).toEqual(state);
+          if (value !== undefined) {
+            const changed = structuredClone(create);
+            delete (changed.payload.variants as Record<string, unknown>[])[0]
+              .minimum_stock_atomic;
+            expect((await push(changed)).status).toBe('rejected');
+            expect(await acceptedPayload(create.event_id)).toEqual(state);
+          }
+        });
+      }
+      for (const invalid of ['5', true, 1.5, -1, 9007199254740992]) {
+        it(`rechaza tipo/rango ${invalid} en alta y edición sin tocar proyecciones`, async () => {
+          const json = supplierFixture('producto_legado');
+          json.variants[0].minimum_stock_atomic = invalid;
+          const bad = event('producto_creado', productId, json);
+          expect((await push(bad)).status).toBe('rejected');
+          expect(await db.manager.count(ProductEntity)).toBe(0);
+          const create = await createProduct('producto_legado', (j) =>
+            minima(j, null),
+          );
+          const before = await rows();
+          const edit = await updateProduct(create, (j) =>
+            minima(j, invalid as any),
+          );
+          expect((await push(edit)).status).toBe('rejected');
+          expect(await rows()).toEqual(before);
+          expect(
+            (await service.pullEvents({ since: 0 })).events.map(
+              (e) => e.event_id,
+            ),
+          ).not.toContain(edit.event_id);
+        });
+      }
+      it('ausencia legada, rechazo intermedio, edición legada y promoción explícita estricta', async () => {
+        const create = await createProduct('producto_legado');
+        const bad = await updateProduct(create, (j) => {
+          minima(j, 1);
+        });
+        // before legado / after actual es parcial; ese intento rechazado no acredita conocimiento.
+        expect((await push(bad)).status).toBe('rejected');
+        const old = await updateProduct(create, (j) => {
+          j.product.name = 'Nombre legado';
+        });
+        expect((await push(old)).status).toBe('accepted');
+        expect(
+          (await acceptedPayload(old.event_id)).variants[0],
+        ).not.toHaveProperty('minimum_stock_atomic');
+        const promote = await updateProduct(old, (j) => {
+          minima(j, 5);
+        });
+        minima(promote.payload.before as Record<string, any>, null);
+        expect((await push(promote)).status).toBe('accepted');
+        const snapshot = await rows();
+        for (const deletion of [false, true]) {
+          const legacy = await updateProduct(promote, (j) => {
+            for (const v of j.variants) delete v.minimum_stock_atomic;
+          });
+          for (const v of (legacy.payload.before as any).variants)
+            delete v.minimum_stock_atomic;
+          if (deletion) {
+            legacy.payload.after = null;
+            legacy.payload.delete_product = true;
+          }
+          const result = await push(legacy);
+          expect(result.status).toBe('rejected');
+          expect(result.reason).toContain('Actualiza la app');
+          expect(await rows()).toEqual(snapshot);
+        }
+        const clear = await updateProduct(promote, (j) => minima(j, null));
+        expect((await push(clear)).status).toBe('accepted');
+        const legacyNull = await updateProduct(clear, (j) => {
+          for (const v of j.variants) delete v.minimum_stock_atomic;
+        });
+        for (const v of (legacyNull.payload.before as any).variants)
+          delete v.minimum_stock_atomic;
+        expect((await push(legacyNull)).reason).toContain('Actualiza la app');
+        expect((await rows()).variants[0].minimumStockAtomic).toBeNull();
+        expect(
+          (await acceptedPayload(clear.event_id)).variants[0],
+        ).toHaveProperty('minimum_stock_atomic', null);
+      });
+      for (const fault of ['before', 'version', 'sequence', 'event']) {
+        it(`promoción no relaja base ${fault}`, async () => {
+          const create = await createProduct('producto_legado');
+          const edit = await updateProduct(create, (j) => minima(j, 5));
+          minima(edit.payload.before as Record<string, any>, null);
+          if (fault === 'before')
+            (edit.payload.before as any).variants[0].sale_price_minor++;
+          if (fault === 'version') edit.base_version!++;
+          if (fault === 'sequence') edit.base_server_sequence = '999999';
+          if (fault === 'event') edit.payload.base_event_id = randomUUID();
+          const before = await rows();
+          expect((await push(edit)).status).toBe(
+            ['event', 'version'].includes(fault) ? 'conflict' : 'rejected',
+          );
+          expect(await rows()).toEqual(before);
+        });
+      }
+      it('snapshot parcial y degradación no se canonicalizan eliminando mínimo', async () => {
+        await seedSuppliers();
+        const create = await createProduct('producto_creado', (j) => {
+          minima(j, 5);
+          j.variants.push({
+            ...j.variants[0],
+            variant_id: randomUUID(),
+            name: 'Segunda',
+            sort_order: 1,
+          });
+        });
+        const before = await rows();
+        for (const fault of ['partial', 'mixed', 'legacy']) {
+          const edit = await updateProduct(create, () => {});
+          const prior = edit.payload.before as any,
+            next = edit.payload.after as any;
+          if (fault === 'partial') delete next.variants[0].minimum_stock_atomic;
+          if (fault === 'mixed')
+            for (const v of next.variants) delete v.minimum_stock_atomic;
+          if (fault === 'legacy')
+            for (const state of [prior, next])
+              for (const v of state.variants) delete v.minimum_stock_atomic;
+          expect((await push(edit)).status).toBe('rejected');
+          expect(await rows()).toEqual(before);
+          const persisted = await db.manager.findOneByOrFail(EventEntity, {
+            eventId: edit.event_id,
+          });
+          expect(persisted.payload).toEqual(edit.payload);
+        }
+        const edit = await updateProduct(create, (j) => minima(j, 7));
+        expect((await push(edit)).status).toBe('accepted');
+        expect((await rows()).suppliers).toEqual(before.suppliers);
+        expect(
+          (await acceptedPayload(edit.event_id)).variants.map(
+            (v) => v.minimum_stock_atomic,
+          ),
+        ).toEqual([7, 7]);
+      });
+      for (const retired of [false, true]) {
+        it(`valor físico con metadata legada queda protegido (retirado=${retired})`, async () => {
+          const create = await createProduct('producto_legado');
+          if (retired)
+            await db.manager.insert(ProductVariantEntity, {
+              ...(await rows()).variants[0],
+              id: randomUUID(),
+              active: false,
+              sortOrder: 1,
+              minimumStockAtomic: '8',
+            });
+          else
+            await db.manager.update(
+              ProductVariantEntity,
+              { id: variant1 },
+              { minimumStockAtomic: '8' },
+            );
+          const legacy = await updateProduct(create, (j) => {
+            j.product.name = 'Antiguo';
+          });
+          expect((await push(legacy)).reason).toContain('Actualiza la app');
+          if (!retired) {
+            const erase = await updateProduct(create, (j) => minima(j, null));
+            minima(erase.payload.before as any, null);
+            expect((await push(erase)).status).toBe('rejected');
+            expect((await rows()).variants[0].minimumStockAtomic).toBe('8');
+          }
+          const current = await updateProduct(create, (j) => {
+            minima(j, retired ? null : 8);
+            j.product.name = 'Actual';
+          });
+          minima(current.payload.before as any, retired ? null : 8);
+          expect((await push(current)).status).toBe('accepted');
+          expect(
+            (await rows()).variants.some((v) => v.minimumStockAtomic === '8'),
+          ).toBe(true);
+        });
+      }
+      it('retiro, alta de variante y borrado conservan valores físicos y proveedores', async () => {
+        await seedSuppliers();
+        const create = await createProduct('producto_creado', (j) => {
+          minima(j, 5);
+          j.variants.push({
+            ...j.variants[0],
+            variant_id: randomUUID(),
+            name: 'Segunda',
+            sort_order: 1,
+          });
+        });
+        const before = await rows();
+        const edit = await updateProduct(create, (j) => {
+          const newVariant = {
+            ...j.variants[0],
+            variant_id: randomUUID(),
+            name: 'Nueva',
+            sort_order: 1,
+            minimum_stock_atomic: null,
+          };
+          j.variants = [j.variants[0], newVariant];
+        });
+        expect((await push(edit)).status).toBe('accepted');
+        const removed = (await rows()).variants.find((v) => !v.active)!;
+        expect(removed.minimumStockAtomic).toBe('5');
+        expect(
+          (await rows()).suppliers.filter((s) => s.variantId === removed.id),
+        ).toEqual(before.suppliers.filter((s) => s.variantId === removed.id));
+        const deletion = await updateProduct(edit, () => {});
+        deletion.payload.after = null;
+        deletion.payload.delete_product = true;
+        expect((await push(deletion)).status).toBe('accepted');
+        expect((await rows()).variants.every((v) => !v.active)).toBe(true);
+        expect(
+          (await rows()).variants.filter((v) => v.minimumStockAtomic === '5'),
+        ).toHaveLength(2);
+      });
+      it('fallo después de proyectar revierte evento, refs y catálogo; concurrentes dan un ganador', async () => {
+        const create = await createProduct('producto_legado', (j) =>
+          minima(j, 5),
+        );
+        const edit = await updateProduct(create, (j) => minima(j, 7));
+        const before = await rows(),
+          eventCount = await db.manager.count(EventEntity),
+          refs = await db.manager.find(EventRefEntity);
+        await expect(
+          db.transaction(async (m) => {
+            expect((await productHandler.apply(m, edit)).status).toBe(
+              'accepted',
+            );
+            throw new Error('después de proyección');
+          }),
+        ).rejects.toThrow('después de proyección');
+        expect(await rows()).toEqual(before);
+        expect(await db.manager.count(EventEntity)).toBe(eventCount);
+        expect(await db.manager.find(EventRefEntity)).toEqual(refs);
+        const other = await updateProduct(create, (j) => {
+          j.product.name = 'Otro campo';
+        });
+        const results = await Promise.all([push(edit), push(other)]);
+        expect(results.map((r) => r.status).sort()).toEqual([
+          'accepted',
+          'conflict',
+        ]);
+        expect(await db.manager.count(SyncConflictEntity)).toBe(1);
+        const winner = results[0].status === 'accepted' ? edit : other;
+        const after = await rows();
+        expect(after.variants[0].minimumStockAtomic).toBe(
+          winner === edit ? '7' : '5',
+        );
+        expect(after.inventory).toEqual(before.inventory);
+        expect(after.movements).toEqual(before.movements);
+        expect(after.balances).toEqual(before.balances);
+        expect(after.sales).toEqual(before.sales);
+        expect((await push(winner)).status).toBe('duplicate');
+        expect(await rows()).toEqual(after);
+      });
+    });
     it('seguimiento directo pasa a receta y luego a ninguno conservando proveedores, fechas y saldo', async () => {
       await seedSuppliers();
       const unitId = randomUUID(),

@@ -43,25 +43,32 @@ function jsonValue(value: unknown): string {
         : item;
   return JSON.stringify(normalize(value));
 }
-function hasSuppliers(payload: Record<string, unknown>): boolean {
+function hasProductContractFields(payload: Record<string, unknown>): boolean {
   if (!payload || typeof payload !== 'object') return false;
   if (
     Array.isArray(payload.variants) &&
-    payload.variants.some((v) => v && typeof v === 'object' && 'suppliers' in v)
+    payload.variants.some(
+      (v) =>
+        v &&
+        typeof v === 'object' &&
+        ('suppliers' in v || 'minimum_stock_atomic' in v),
+    )
   )
     return true;
   return ['before', 'after'].some(
     (key) =>
       payload[key] != null &&
       typeof payload[key] === 'object' &&
-      hasSuppliers(payload[key] as Record<string, unknown>),
+      hasProductContractFields(payload[key] as Record<string, unknown>),
   );
 }
+/** Sobre estricto compartido por proveedores y los campos actuales de producto. */
 export function isSupplierContractEvent(event: PushEventDto): boolean {
   return (
     event?.event_type === ProveedorCreadoPayload.eventType ||
     event?.event_type === ProveedorActualizadoPayload.eventType ||
-    (event?.aggregate_type === 'product' && hasSuppliers(event.payload))
+    (event?.aggregate_type === 'product' &&
+      hasProductContractFields(event.payload))
   );
 }
 /** Conserva la deduplicación legada; verifica la intención de los contratos nuevos. */
@@ -72,8 +79,9 @@ export function supplierDuplicateMatches(
   const relevant =
     event.aggregate_type === 'supplier' ||
     old.aggregateType === 'supplier' ||
-    (event.aggregate_type === 'product' && hasSuppliers(event.payload)) ||
-    (old.aggregateType === 'product' && hasSuppliers(old.payload));
+    (event.aggregate_type === 'product' &&
+      hasProductContractFields(event.payload)) ||
+    (old.aggregateType === 'product' && hasProductContractFields(old.payload));
   if (!relevant) return true;
   try {
     return (

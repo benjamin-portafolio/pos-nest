@@ -14,6 +14,10 @@ export class ProductoActualizadoPayload {
       throw new Error(
         'La edición debe conocer suppliers en before y after, o conservar ambos estados legados.',
       );
+    if (before.knowsMinimumStock !== after.knowsMinimumStock)
+      throw new Error(
+        'La edición debe conocer minimum_stock_atomic en before y after, o conservar ambos estados legados.',
+      );
     if (
       JSON.stringify(before.saleConfiguration) !==
       JSON.stringify(after.saleConfiguration)
@@ -73,6 +77,7 @@ export class ProductoActualizadoPayload {
         v.salePriceMinor === other.salePriceMinor &&
         v.standardCostMinor === other.standardCostMinor &&
         v.inventoryItemId === other.inventoryItemId &&
+        (v.minimumStockAtomic ?? null) === (other.minimumStockAtomic ?? null) &&
         v.sortOrder === other.sortOrder &&
         ProductoProveedorPrecio.sameList(v.suppliers, other.suppliers) &&
         v.recipeComponents.length === other.recipeComponents.length &&
@@ -90,11 +95,19 @@ export class ProductoActualizadoPayload {
     current: ProductoCreadoPayload,
     before: ProductoCreadoPayload,
   ): boolean {
+    // El conocimiento es monotónico incluso para borrados. La normalización
+    // de ausencia a null no produce un cambio de negocio en sameState.
+    // Los consumidores conservan sus checks de evento, versión y secuencia.
+    if (current.knowsMinimumStock && !before.knowsMinimumStock) return false;
+    const normalized =
+      !current.knowsMinimumStock && before.knowsMinimumStock
+        ? current.withKnownMinimumStock()
+        : current;
     return (
-      this.sameState(current, before) ||
-      (!current.knowsSuppliers &&
+      this.sameState(normalized, before) ||
+      (!normalized.knowsSuppliers &&
         before.knowsSuppliers &&
-        this.sameState(current.withKnownSuppliers(), before))
+        this.sameState(normalized.withKnownSuppliers(), before))
     );
   }
   get dependencyEventIds(): ReadonlySet<string> {

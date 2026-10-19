@@ -141,9 +141,10 @@ export class ProductoEventHandler {
           'No se puede cambiar la forma de venta.',
         );
       }
-      const variants = await manager.find(ProductVariantEntity, {
-        where: { productId: existingProduct.id, active: true },
+      const storedVariants = await manager.find(ProductVariantEntity, {
+        where: { productId: existingProduct.id },
       });
+      const variants = storedVariants.filter((v) => v.active);
       const base = await manager.findOneBy(EventEntity, {
         eventId: update.baseEventId,
       });
@@ -170,6 +171,19 @@ export class ProductoEventHandler {
       const known = ProductoCreadoPayload.knowsSuppliersJson(
         baseState as Record<string, unknown>,
       );
+      // Solo la base aceptada vigente acredita presencia. Un valor físico,
+      // incluso de una variante retirada, también debe quedar protegido si
+      // falta metadata histórica; SQL null por sí solo no acredita conocimiento.
+      const knowsMinimumStock =
+        ProductoCreadoPayload.knowsMinimumStockJson(
+          baseState as Record<string, unknown>,
+        ) || storedVariants.some((v) => v.minimumStockAtomic != null);
+      if (knowsMinimumStock && !update.before.knowsMinimumStock)
+        return this.saveRejectedEvent(
+          manager,
+          event,
+          'Actualiza la app para editar o borrar este artículo.',
+        );
       const oldValues: ProductoCreadoVariantValue[] = [];
       let hasStoredSuppliers = false;
       for (const variant of variants.sort(
@@ -195,6 +209,11 @@ export class ProductoEventHandler {
               ? null
               : Number(variant.standardCostMinor),
           inventoryItemId: variant.inventoryItemId,
+          minimumStockAtomic: knowsMinimumStock
+            ? variant.minimumStockAtomic == null
+              ? null
+              : Number(variant.minimumStockAtomic)
+            : undefined,
           recipeComponents: recipe.map((c) => ({
             inventoryItemId: c.inventoryItemId,
             quantityAtomic: Number(c.quantityAtomic),
@@ -656,6 +675,10 @@ export class ProductoEventHandler {
                 ? null
                 : String(variant.standardCostMinor),
             inventoryItemId: variant.inventoryItemId,
+            minimumStockAtomic:
+              variant.minimumStockAtomic == null
+                ? null
+                : String(variant.minimumStockAtomic),
             sortOrder: variant.sortOrder,
             version: existingProduct.version,
             lastEventId: event.event_id,
@@ -710,6 +733,10 @@ export class ProductoEventHandler {
                 ? null
                 : String(variant.standardCostMinor),
             inventoryItemId: variant.inventoryItemId,
+            minimumStockAtomic:
+              variant.minimumStockAtomic == null
+                ? null
+                : String(variant.minimumStockAtomic),
             sortOrder: variant.sortOrder,
             active: true,
             version: 1,

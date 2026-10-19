@@ -1,3 +1,4 @@
+import { AddVariantMinimumStock1792368000000 } from './migrations/1792368000000-AddVariantMinimumStock';
 import { SupplierEntity } from './entities/supplier.entity';
 import { VariantSupplierEntity } from './entities/variant-supplier.entity';
 import { ProveedorEventHandler } from './sync/proveedor-event.handler';
@@ -66,6 +67,9 @@ import { FinancialReportController } from './reports/financial-report.controller
         password: config.getOrThrow<string>('DATABASE_PASSWORD'),
         database: config.getOrThrow<string>('DATABASE_NAME'),
         synchronize: true,
+        // Registro para ejecución explícita; nunca ejecutar migraciones al arrancar.
+        migrations: [AddVariantMinimumStock1792368000000],
+        migrationsRun: false,
         entities: [
           CreditSaleEntity,
           CustomerPaymentEntity,
