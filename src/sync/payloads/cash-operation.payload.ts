@@ -1,3 +1,6 @@
+import { VentaAnuladaPayload } from './venta-anulada.payload';
+import { DevolucionVentaRegistradaPayload } from './devolucion-venta-registrada.payload';
+import { isSaleAdjustment } from './sale-adjustment-identity';
 import { PushEventDto } from '../dto/push-events.dto';
 import { CashBindingPayload } from './cash-binding.payload';
 import { VentaConfirmadaPayload } from './venta-confirmada.payload';
@@ -6,8 +9,9 @@ import { MovimientoFinancieroRegistradoPayload } from './movimiento-financiero-r
 /** Derivación tipada del origen real: no acepta importes separados del pago. */
 export class CashOperationPayload {
   private constructor(readonly cash: CashBindingPayload,readonly sourceType: string,readonly sourceId: string,readonly direction: string,readonly amountMinor: number) {}
-  static hasBinding(e: PushEventDto): boolean { return [VentaConfirmadaPayload.eventType,AbonoClienteRegistradoPayload.eventType,MovimientoFinancieroRegistradoPayload.eventType].includes(e.event_type) && e.payload.cash!=null; }
+  static hasBinding(e: PushEventDto): boolean { return (isSaleAdjustment(e.event_type) && e.payload.settlement!=null && (e.payload.settlement as Record<string,unknown>).cash!=null) || [VentaConfirmadaPayload.eventType,AbonoClienteRegistradoPayload.eventType,MovimientoFinancieroRegistradoPayload.eventType].includes(e.event_type) && e.payload.cash!=null; }
   static fromEvent(e: PushEventDto): CashOperationPayload | null {
+    if(isSaleAdjustment(e.event_type)) {const p=(e.event_type===VentaAnuladaPayload.eventType?VentaAnuladaPayload.fromJson(e.payload):DevolucionVentaRegistradaPayload.fromJson(e.payload)).adjustment;return p.settlement.cash?new CashOperationPayload(CashBindingPayload.optional(p.settlement.cash,'cash',p.total_minor)!,'sale_adjustment',p.operation_id,'out',p.total_minor):null;}
     switch(e.event_type) {
       case VentaConfirmadaPayload.eventType: { const p=VentaConfirmadaPayload.fromJson(e.payload); return p.cash ? new CashOperationPayload(p.cash,'sale_payment',p.paymentId!,'in',p.totalMinor) : null; }
       case AbonoClienteRegistradoPayload.eventType: { const p=AbonoClienteRegistradoPayload.fromJson(e.payload); return p.cash ? new CashOperationPayload(p.cash,'customer_payment',e.aggregate_id,'in',p.amountMinor) : null; }

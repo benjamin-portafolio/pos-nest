@@ -39,13 +39,15 @@ import { InventoryItemEntity } from './inventory-item.entity';
 )
 @Check(
   'ck_inventory_movements_reversal_reference',
-  '("movement_type" = \'reversal\') = ("reversal_of_movement_id" IS NOT NULL)',
+  '("movement_type" IN (\'reversal\', \'sale_void_restock\', \'sale_return_restock\')) = ("reversal_of_movement_id" IS NOT NULL)',
 )
 @Check(
   'ck_inventory_movements_no_self_reversal',
   '"reversal_of_movement_id" IS NULL OR "reversal_of_movement_id" <> "movement_id"',
 )
 export class InventoryMovementEntity {
+  // FK y constraint de origen compensatorio en migración explícita.
+  @Column('uuid', { name: 'sale_adjustment_id', nullable: true }) saleAdjustmentId: string | null;
   @PrimaryColumn('uuid', { name: 'movement_id' })
   movementId: string;
 

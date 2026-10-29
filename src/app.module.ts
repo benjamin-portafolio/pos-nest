@@ -1,3 +1,11 @@
+import { SaleReconciliationCreditAllocationEntity } from './entities/sale-reconciliation-credit-allocation.entity';
+import { SaleReconciliationEffectEntity } from './entities/sale-reconciliation-effect.entity';
+import { CreateSaleReconciliationEffects1793232000000 } from './migrations/1793232000000-CreateSaleReconciliationEffects';
+import { SaleAdjustmentEntity } from './entities/sale-adjustment.entity';
+import { SaleAdjustmentLineEntity } from './entities/sale-adjustment-line.entity';
+import { SaleCreditReductionEntity } from './entities/sale-credit-reduction.entity';
+import { SaleAdjustmentEventHandler } from './sync/sale-adjustment-event.handler';
+import { CreateSaleAdjustments1793145600000 } from './migrations/1793145600000-CreateSaleAdjustments';
 import { AddVariantMinimumStock1792368000000 } from './migrations/1792368000000-AddVariantMinimumStock';
 import { SupplierEntity } from './entities/supplier.entity';
 import { VariantSupplierEntity } from './entities/variant-supplier.entity';
@@ -66,11 +74,12 @@ import { FinancialReportController } from './reports/financial-report.controller
         username: config.getOrThrow<string>('DATABASE_USER'),
         password: config.getOrThrow<string>('DATABASE_PASSWORD'),
         database: config.getOrThrow<string>('DATABASE_NAME'),
-        synchronize: true,
+        // Las relaciones/constraints de ajustes se instalan por migración explícita.
+        synchronize: false,
         // Registro para ejecución explícita; nunca ejecutar migraciones al arrancar.
-        migrations: [AddVariantMinimumStock1792368000000],
+        migrations: [AddVariantMinimumStock1792368000000, CreateSaleAdjustments1793145600000, CreateSaleReconciliationEffects1793232000000],
         migrationsRun: false,
-        entities: [
+        entities: [SaleReconciliationCreditAllocationEntity, SaleReconciliationEffectEntity, SaleAdjustmentEntity, SaleAdjustmentLineEntity, SaleCreditReductionEntity,
           CreditSaleEntity,
           CustomerPaymentEntity,
           CreditAllocationEntity,
@@ -110,7 +119,7 @@ import { FinancialReportController } from './reports/financial-report.controller
     CollectionsReportController,
     FinancialReportController,
   ],
-  providers: [
+  providers: [SaleAdjustmentEventHandler,
     CashEventHandler,
     AccountBalanceBaselineEventHandler,
     CollectionsReportService,

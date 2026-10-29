@@ -10,10 +10,10 @@ export class CajaCerradaPayload {
   static fromJson(p: Record<string, unknown>): CajaCerradaPayload {
     if (!Array.isArray(p.movements)) throw new Error('Falta la evidencia del corte.');
     const movements = p.movements.map(CashMovementEvidence.fromJson).sort((a,b)=>a.movementId < b.movementId ? -1 : a.movementId > b.movementId ? 1 : 0);
-    if (new Set(movements.map(m=>m.movementId)).size !== movements.length || new Set(movements.map(m=>m.eventId)).size !== movements.length) throw new Error('Movimientos duplicados en corte.');
+    if (new Set(movements.map(m=>m.movementId)).size !== movements.length || movements.some(m=>movements.filter(x=>x.eventId===m.eventId).length>1 && (m.sourceType!=='sale_reconciliation'||movements.filter(x=>x.eventId===m.eventId).some(x=>x.sourceType!=='sale_reconciliation'||x.sourceId!==m.sourceId)))) throw new Error('Movimientos duplicados en corte.');
     return new CajaCerradaPayload(requiredUuidV4(p.opening_event_id,'opening_event_id'), integer(p.closed_at_ms,1), integer(p.counted_minor), decimal(p.income_minor), decimal(p.expense_minor), decimal(p.expected_minor), decimal(p.difference_minor), financialOptionalText(p.notes,'notes',500), movements);
   }
-  get dependencyEventIds(): string[] { return [this.openingEventId,...this.movements.map(m=>m.eventId)]; }
+  get dependencyEventIds(): string[] { return [...new Set([this.openingEventId,...this.movements.map(m=>m.eventId)])]; }
   verify(opening: string, actual: CashMovementEvidence[]): void {
     const sorted = [...actual].sort((a,b)=>a.movementId < b.movementId ? -1 : a.movementId > b.movementId ? 1 : 0);
     const incoming = actual.filter(m=>m.direction==='in').reduce((s,m)=>s+BigInt(m.amountMinor),0n);

@@ -7,10 +7,12 @@ import { FinancialEntryEntity } from './financial-entry.entity';
 /** Movimiento inmutable de un origen real; nunca duplica el fondo inicial. */
 @Entity({ name: 'cash_movements' })
 @Index('ix_cash_movements_session', ['sessionId'])
-@Check('ck_cash_movement_source', 'num_nonnulls(sale_payment_id, customer_payment_id, financial_entry_id) = 1')
+@Check('ck_cash_movement_source', 'num_nonnulls(sale_payment_id, customer_payment_id, financial_entry_id, sale_adjustment_id) = 1')
 @Check('ck_cash_movement_amount', 'amount_minor > 0 AND amount_minor <= 9007199254740991')
 @Check('ck_cash_movement_direction', "direction IN ('in','out')")
 export class CashMovementEntity extends SyncProjectionEntity {
+  // FK a sale_adjustments definida por la migración explícita.
+  @Column('uuid', { name: 'sale_adjustment_id', nullable: true, unique: true }) saleAdjustmentId: string | null;
   @PrimaryColumn('uuid') id: string;
   @Column('uuid', { name: 'session_id' }) sessionId: string;
   @ManyToOne(() => CashSessionEntity, { onDelete: 'RESTRICT' })

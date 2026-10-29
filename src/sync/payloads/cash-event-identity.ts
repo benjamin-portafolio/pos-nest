@@ -1,3 +1,4 @@
+import { isSaleAdjustment } from './sale-adjustment-identity';
 import { isDeepStrictEqual } from 'util';
 import { EventEntity } from '../../entities/event.entity';
 import { PushEventDto } from '../dto/push-events.dto';
@@ -12,6 +13,7 @@ function canonical(type:string,p:Record<string,unknown>):Record<string,unknown> 
 }
 /** La respuesta perdida solo puede reconocer la misma intención inmutable. */
 export function cashDuplicateMatches(e:PushEventDto,old:EventEntity):boolean {
+ if(isSaleAdjustment(e.event_type)||isSaleAdjustment(old.eventType)) return true;
  const prior={...e,event_type:old.eventType,payload:old.payload};
  try {
   const types=[CajaAbiertaPayload.eventType,CajaCerradaPayload.eventType];

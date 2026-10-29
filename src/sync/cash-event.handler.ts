@@ -1,3 +1,7 @@
+import { SaleReconciliationEffectEntity } from '../entities/sale-reconciliation-effect.entity';
+import { OperacionVentaConciliadaPayload } from './payloads/operacion-venta-conciliada.payload';
+import { SaleAdjustmentEntity } from '../entities/sale-adjustment.entity';
+import { adjustmentDuplicateMatches } from './payloads/sale-adjustment-identity';
 import { cashDuplicateMatches } from './payloads/cash-event-identity';
 import { Injectable } from '@nestjs/common';
 import { randomUUID } from 'crypto';
@@ -33,7 +37,7 @@ export class CashEventHandler {
     await this.lock(m,'device:'+e.device_id);
     await this.lock(m,'session:'+e.aggregate_id);
     const duplicate=await m.findOneBy(EventEntity,{eventId:e.event_id});
-    if(duplicate) return cashDuplicateMatches(e,duplicate)?this.result(duplicate,'duplicate'):this.rejected(e,'El event_id ya existe con otro contenido.');
+    if(duplicate) return cashDuplicateMatches(e,duplicate)&&adjustmentDuplicateMatches(e,duplicate)?this.result(duplicate,'duplicate'):this.rejected(e,'El event_id ya existe con otro contenido.');
     const dependency=await this.dependencies(m,e,p.dependencyEventIds);
     if(dependency) return dependency;
     const session=await m.findOneBy(CashSessionEntity,{id:e.aggregate_id});
@@ -48,7 +52,13 @@ export class CashEventHandler {
     }
     if(!session || session.deviceId!==e.device_id || session.status!=='open' || session.createdEventId!==p.openingEventId) return this.conflict(m,e,'La sesión no está abierta o pertenece a otro dispositivo.');
     const movements=await m.findBy(CashMovementEntity,{sessionId:session.id});
-    try { p.verify(session.openingMinor,movements.map(v=>this.evidence(v))); }
+    const evidence=movements.map(v=>this.evidence(v));
+    if(m.connection.hasMetadata(SaleReconciliationEffectEntity)) for(const r of await m.find(SaleReconciliationEffectEntity,{where:{ledger:'cash',cashSessionId:session.id}})) {
+      const event=await m.findOneByOrFail(EventEntity,{eventId:r.eventId});
+      const payload=OperacionVentaConciliadaPayload.fromJson(event.payload);
+      evidence.push(CashMovementEvidence.fromJson({movement_id:r.effectId,event_id:r.eventId,direction:BigInt(r.delta)>0n?'in':'out',amount_minor:Number(BigInt(r.delta)>0n?BigInt(r.delta):-BigInt(r.delta)),source_type:'sale_reconciliation',source_id:payload.data.operation_id}));
+    }
+    try { p.verify(session.openingMinor,evidence); }
     catch(error) { return this.conflict(m,e,(error as Error).message); }
     const saved=await this.save(m,{...e,payload:p.toJson()},EventSyncStatus.SYNCED);
     await m.save(CashSessionEntity,{...session,status:'closed',closedByUserId:e.user_id,closedAtMs:String(p.closedAtMs),countedMinor:String(p.countedMinor),incomeMinor:p.incomeMinor,expenseMinor:p.expenseMinor,expectedMinor:p.expectedMinor,differenceMinor:p.differenceMinor,notes:p.notes,closeSnapshot:p.toJson(),lastEventId:e.event_id,lastServerSequence:saved.serverSequence,version:2});
@@ -64,22 +74,22 @@ export class CashEventHandler {
     await this.lock(m,'device:'+e.device_id);
     await this.lock(m,'session:'+p.cash.sessionId);
     const duplicate=await m.findOneBy(EventEntity,{eventId:e.event_id});
-    if(duplicate) return cashDuplicateMatches(e,duplicate)?this.result(duplicate,'duplicate'):this.rejected(e,'El event_id ya existe con otro contenido.');
+    if(duplicate) return cashDuplicateMatches(e,duplicate)&&adjustmentDuplicateMatches(e,duplicate)?this.result(duplicate,'duplicate'):this.rejected(e,'El event_id ya existe con otro contenido.');
     const dependency=await this.dependencies(m,e,[p.cash.openingEventId]);
     if(dependency) return dependency;
     const session=await m.findOneBy(CashSessionEntity,{id:p.cash.sessionId});
     if(!session || session.createdEventId!==p.cash.openingEventId || session.deviceId!==e.device_id || session.status!=='open') return this.conflict(m,e,'Operación conservada: caja cerrada, inexistente o de otro dispositivo.',p.cash.sessionId);
     const result=await apply();
     if(result.status!=='accepted') return result;
-    const origin=p.sourceType==='sale_payment' ? await m.findOneBy(SalePaymentEntity,{id:p.sourceId}) : p.sourceType==='customer_payment' ? await m.findOneBy(CustomerPaymentEntity,{id:p.sourceId}) : await m.findOneBy(FinancialEntryEntity,{id:p.sourceId});
-    if(!origin || origin.method!=='cash' || origin.amountMinor!==String(p.amountMinor) || origin.createdEventId!==e.event_id || (origin instanceof FinancialEntryEntity && origin.direction!==p.direction)) throw new Error('El origen real no coincide con el movimiento.');
-    await m.insert(CashMovementEntity,{id:p.cash.movementId,sessionId:session.id,direction:p.direction,amountMinor:String(p.amountMinor),salePaymentId:p.sourceType==='sale_payment'?p.sourceId:null,customerPaymentId:p.sourceType==='customer_payment'?p.sourceId:null,financialEntryId:p.sourceType==='financial_entry'?p.sourceId:null,createdEventId:e.event_id,lastEventId:e.event_id,lastServerSequence:result.server_sequence==null?null:String(result.server_sequence)});
+    const origin=p.sourceType==='sale_adjustment' ? await m.findOneBy(SaleAdjustmentEntity,{id:p.sourceId}) : p.sourceType==='sale_payment' ? await m.findOneBy(SalePaymentEntity,{id:p.sourceId}) : p.sourceType==='customer_payment' ? await m.findOneBy(CustomerPaymentEntity,{id:p.sourceId}) : await m.findOneBy(FinancialEntryEntity,{id:p.sourceId});
+    if(!origin || origin.method!=='cash' || (origin instanceof SaleAdjustmentEntity ? origin.totalMinor : origin.amountMinor)!==String(p.amountMinor) || origin.createdEventId!==e.event_id || (origin instanceof FinancialEntryEntity && origin.direction!==p.direction)) throw new Error('El origen real no coincide con el movimiento.');
+    await m.insert(CashMovementEntity,{id:p.cash.movementId,sessionId:session.id,direction:p.direction,amountMinor:String(p.amountMinor),salePaymentId:p.sourceType==='sale_payment'?p.sourceId:null,customerPaymentId:p.sourceType==='customer_payment'?p.sourceId:null,financialEntryId:p.sourceType==='financial_entry'?p.sourceId:null,saleAdjustmentId:p.sourceType==='sale_adjustment'?p.sourceId:null,createdEventId:e.event_id,lastEventId:e.event_id,lastServerSequence:result.server_sequence==null?null:String(result.server_sequence)});
     const saved=await m.findOneByOrFail(EventEntity,{eventId:e.event_id});
     await this.refs(m,saved,session.id,false,p.cash.movementId);
     return result;
   }
   evidence(v: CashMovementEntity): CashMovementEvidence {
-    return CashMovementEvidence.fromJson({movement_id:v.id,event_id:v.createdEventId,direction:v.direction,amount_minor:Number(v.amountMinor),source_type:v.salePaymentId?'sale_payment':v.customerPaymentId?'customer_payment':'financial_entry',source_id:v.salePaymentId??v.customerPaymentId??v.financialEntryId});
+    return CashMovementEvidence.fromJson({movement_id:v.id,event_id:v.createdEventId,direction:v.direction,amount_minor:Number(v.amountMinor),source_type:v.salePaymentId?'sale_payment':v.customerPaymentId?'customer_payment':v.saleAdjustmentId?'sale_adjustment':'financial_entry',source_id:v.salePaymentId??v.customerPaymentId??v.saleAdjustmentId??v.financialEntryId});
   }
   private async lock(m: EntityManager,key: string): Promise<void> { await m.query('SELECT pg_advisory_xact_lock(hashtextextended($1, 0))',['cash:'+key]); }
   private async dependencies(m: EntityManager,e: PushEventDto,ids: string[]): Promise<PushEventResultDto|null> {
