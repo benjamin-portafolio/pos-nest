@@ -1,4 +1,5 @@
 import { SaleItemEntity } from './sale-item.entity';
+import { SaleAdjustmentEntity } from './sale-adjustment.entity';
 import {
   Check,
   Column,
@@ -11,6 +12,16 @@ import {
 import { InventoryItemEntity } from './inventory-item.entity';
 
 @Entity({ name: 'inventory_movements' })
+@Index('ix_inventory_adjustment', ['saleAdjustmentId'])
+@Index(
+  'ux_adjustment_consumption',
+  ['saleAdjustmentId', 'reversalOfMovementId'],
+  { unique: true, where: 'sale_adjustment_id IS NOT NULL' },
+)
+@Check(
+  'ck_inventory_adjustment_origin',
+  "(movement_type IN ('sale_void_restock','sale_return_restock'))=(sale_adjustment_id IS NOT NULL) AND (sale_adjustment_id IS NULL OR (sale_item_id IS NOT NULL AND quantity_delta_atomic>0 AND total_cost_minor IS NULL))",
+)
 @Index('ux_sale_consumption', ['saleItemId', 'inventoryItemId'], {
   unique: true,
   where: "movement_type = 'sale_consumption'",
@@ -39,15 +50,24 @@ import { InventoryItemEntity } from './inventory-item.entity';
 )
 @Check(
   'ck_inventory_movements_reversal_reference',
-  '("movement_type" IN (\'reversal\', \'sale_void_restock\', \'sale_return_restock\')) = ("reversal_of_movement_id" IS NOT NULL)',
+  "(\"movement_type\" IN ('reversal', 'sale_void_restock', 'sale_return_restock')) = (\"reversal_of_movement_id\" IS NOT NULL)",
 )
 @Check(
   'ck_inventory_movements_no_self_reversal',
   '"reversal_of_movement_id" IS NULL OR "reversal_of_movement_id" <> "movement_id"',
 )
 export class InventoryMovementEntity {
-  // FK y constraint de origen compensatorio en migración explícita.
-  @Column('uuid', { name: 'sale_adjustment_id', nullable: true }) saleAdjustmentId: string | null;
+  @Column('uuid', { name: 'sale_adjustment_id', nullable: true })
+  saleAdjustmentId: string | null;
+  @ManyToOne(() => SaleAdjustmentEntity, {
+    nullable: true,
+    onDelete: 'RESTRICT',
+  })
+  @JoinColumn({
+    name: 'sale_adjustment_id',
+    foreignKeyConstraintName: 'inventory_movements_sale_adjustment_id_fkey',
+  })
+  saleAdjustment: SaleAdjustmentEntity | null;
   @PrimaryColumn('uuid', { name: 'movement_id' })
   movementId: string;
 

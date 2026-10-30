@@ -1,6 +1,7 @@
 import { SaleReconciliationCreditAllocationEntity } from './entities/sale-reconciliation-credit-allocation.entity';
 import { SaleReconciliationEffectEntity } from './entities/sale-reconciliation-effect.entity';
 import { CreateSaleReconciliationEffects1793232000000 } from './migrations/1793232000000-CreateSaleReconciliationEffects';
+import { AlignSaleAdjustmentProjectionComments1793318400000 } from './migrations/1793318400000-AlignSaleAdjustmentProjectionComments';
 import { SaleAdjustmentEntity } from './entities/sale-adjustment.entity';
 import { SaleAdjustmentLineEntity } from './entities/sale-adjustment-line.entity';
 import { SaleCreditReductionEntity } from './entities/sale-credit-reduction.entity';
@@ -77,7 +78,7 @@ import { FinancialReportController } from './reports/financial-report.controller
         // Las relaciones/constraints de ajustes se instalan por migración explícita.
         synchronize: false,
         // Registro para ejecución explícita; nunca ejecutar migraciones al arrancar.
-        migrations: [AddVariantMinimumStock1792368000000, CreateSaleAdjustments1793145600000, CreateSaleReconciliationEffects1793232000000],
+        migrations: [AddVariantMinimumStock1792368000000, CreateSaleAdjustments1793145600000, CreateSaleReconciliationEffects1793232000000, AlignSaleAdjustmentProjectionComments1793318400000],
         migrationsRun: false,
         entities: [SaleReconciliationCreditAllocationEntity, SaleReconciliationEffectEntity, SaleAdjustmentEntity, SaleAdjustmentLineEntity, SaleCreditReductionEntity,
           CreditSaleEntity,

@@ -6,6 +6,7 @@ import {
   JoinColumn,
   ManyToOne,
   PrimaryColumn,
+  Unique,
 } from 'typeorm';
 import { SyncProjectionEntity } from './sync-projection.entity';
 import { SaleEntity } from './sale.entity';
@@ -18,27 +19,51 @@ import { ClienteEntity } from './cliente.entity';
   'ck_sale_adjustment_settlement',
   "(method='credit' AND payment_id IS NULL AND cliente_id IS NOT NULL) OR (method IN ('cash','transfer') AND payment_id IS NOT NULL)",
 )
-@Index('ux_sale_adjustment_revision', ['saleId', 'revision'], { unique: true })
+@Unique('ux_sale_adjustment_revision', ['saleId', 'revision'])
 @Index('ux_sale_adjustment_void', ['saleId'], {
   unique: true,
   where: "kind = 'void'",
 })
 @Index('ix_sale_adjustment_date', ['businessDate'])
 @Check(
-  'ck_sale_adjustment_amount',
+  'sale_adjustments_total_minor_check',
   'total_minor BETWEEN 0 AND 9007199254740991',
 )
-@Check('ck_sale_adjustment_revision', 'revision > 0')
-@Check('ck_sale_adjustment_kind', "kind IN ('void','return')")
+@Check('sale_adjustments_revision_check', 'revision > 0')
+@Check('sale_adjustments_kind_check', "kind IN ('void','return')")
+@Check(
+  'sale_adjustments_reason_check',
+  'reason=btrim(reason) AND length(reason) BETWEEN 1 AND 500',
+)
+@Check('sale_adjustments_occurred_at_ms_check', 'occurred_at_ms>0')
+@Check(
+  'sale_adjustments_utc_offset_minutes_check',
+  'abs(utc_offset_minutes)<=840',
+)
+@Check('sale_adjustments_currency_check', "currency='MXN'")
+@Check(
+  'sale_adjustments_method_check',
+  "method IN ('cash','transfer','credit')",
+)
+@Check(
+  'sale_adjustments_settlement_action_check',
+  "settlement_action IN ('refund_completed','unreceived_correction','credit_reduction','no_money')",
+)
 export class SaleAdjustmentEntity extends SyncProjectionEntity {
   @PrimaryColumn('uuid') id: string;
   @Column('uuid', { name: 'event_id', unique: true }) eventId: string;
   @ManyToOne(() => EventEntity, { onDelete: 'RESTRICT' })
-  @JoinColumn({ name: 'event_id' })
+  @JoinColumn({
+    name: 'event_id',
+    foreignKeyConstraintName: 'sale_adjustments_event_id_fkey',
+  })
   event: EventEntity;
   @Column('uuid', { name: 'sale_id' }) saleId: string;
   @ManyToOne(() => SaleEntity, { onDelete: 'RESTRICT' })
-  @JoinColumn({ name: 'sale_id' })
+  @JoinColumn({
+    name: 'sale_id',
+    foreignKeyConstraintName: 'sale_adjustments_sale_id_fkey',
+  })
   sale: SaleEntity;
   @Column('integer') revision: number;
   @Column('text') kind: string;
@@ -55,12 +80,18 @@ export class SaleAdjustmentEntity extends SyncProjectionEntity {
     | string
     | null;
   @ManyToOne(() => SalePaymentEntity, { onDelete: 'RESTRICT' })
-  @JoinColumn({ name: 'payment_id' })
+  @JoinColumn({
+    name: 'payment_id',
+    foreignKeyConstraintName: 'sale_adjustments_payment_id_fkey',
+  })
   payment: SalePaymentEntity | null;
   @Column('uuid', { name: 'cliente_id', nullable: true }) clienteId:
     | string
     | null;
   @ManyToOne(() => ClienteEntity, { onDelete: 'RESTRICT' })
-  @JoinColumn({ name: 'cliente_id' })
+  @JoinColumn({
+    name: 'cliente_id',
+    foreignKeyConstraintName: 'sale_adjustments_cliente_id_fkey',
+  })
   cliente: ClienteEntity | null;
 }
