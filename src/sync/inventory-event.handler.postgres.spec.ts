@@ -43,6 +43,7 @@ runPostgresIntegration('InventoryEventHandler con PostgreSQL real', () => {
       ...connection,
       schema,
       entities: [
+        ...[__dirname + '/../entities/*.entity.ts'],
         ClienteEntity,
         SaleEntity,
         SaleItemEntity,

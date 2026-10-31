@@ -1,3 +1,7 @@
+import { SaleAdjustmentEntity } from '../entities/sale-adjustment.entity';
+import { SaleAdjustmentLineEntity } from '../entities/sale-adjustment-line.entity';
+import { SaleCreditReductionEntity } from '../entities/sale-credit-reduction.entity';
+const adjustmentEntities = [SaleAdjustmentEntity, SaleAdjustmentLineEntity, SaleCreditReductionEntity];
 import { CashSessionEntity } from '../entities/cash-session.entity';
 import { CashMovementEntity } from '../entities/cash-movement.entity';
 import { FinancialCategoryEntity } from '../entities/financial-category.entity';
@@ -68,6 +72,7 @@ integration('Venta efectivo PostgreSQL aislado', () => {
       schema,
       synchronize: true,
       entities: [
+        ...adjustmentEntities,
         CashSessionEntity,CashMovementEntity,FinancialCategoryEntity,FinancialEntryEntity,
         ClienteEntity,
         CreditSaleEntity,
@@ -287,6 +292,101 @@ integration('Venta efectivo PostgreSQL aislado', () => {
       payment_reference: reference,
     });
     return e;
+  }
+  function v2Sale(priceEventId = configId, mode = 'offer', consumptionMode: 'none'|'direct'|'recipe' = 'direct', measured = false): PushEventDto {
+    const e = sale(consumptionMode, measured);
+    const line = (e.payload.lines as any[])[0];
+    const total = measured ? (mode === 'offer' ? 4000:5000) : (mode === 'offer' ? 8000:10000);
+    Object.assign(e.payload, {pricing_contract_version:2, pricing_mode:mode, total_minor:total, change_minor:20000-total});
+    Object.assign(line.snapshot, {price_snapshot_version:2, normal_price_minor_snapshot:10000, offer_price_minor_snapshot:8000, effective_price_source:mode, price_selection:'inherit', price_configuration_event_id:priceEventId, unit_price_minor:mode === 'offer' ? 8000:10000});
+    e.payload.dependency_event_ids = [...new Set([configId,priceEventId])];
+    return e;
+  }
+  async function knownPrice(): Promise<void> {
+    const base = await db.manager.findOneByOrFail(EventEntity,{eventId:configId});
+    Object.assign((base.payload.variants as any[])[0],{offer_price_minor:8000,standard_cost_minor:900});
+    await db.manager.save(base);
+  }
+  it.each(['cash', 'transfer', 'credit'])('S4 v2 %s recibe el importe efectivo y conserva costo histórico', async (method) => {
+    await knownPrice();
+    const e = v2Sale();
+    if (method === 'transfer') Object.assign(e.payload, {payment_method: method, received_minor:8000, change_minor:0});
+    if (method === 'credit') {
+      const c = await customer();
+      Object.assign(e.payload, {payment_method: method, payment_id:null, received_minor:0, change_minor:0,
+        cliente_id:c.aggregate_id, cliente_event_id:c.event_id, cliente_nombre:'Ana', occurred_at_ms:Date.now(),
+        dependency_event_ids:[configId,c.event_id]});
+    }
+    expect((await push(e)).status).toBe('accepted');
+    const line = (await db.manager.find(SaleItemEntity, {where:{saleId:e.aggregate_id}}))[0];
+    expect(line.snapshot).toEqual((e.payload.lines as any[])[0]);
+    expect((await db.manager.findOneByOrFail(SaleEntity,{id:e.aggregate_id})).totalMinor).toBe('8000');
+    if (method === 'credit') {
+      expect((await db.manager.findOneByOrFail(CreditSaleEntity,{saleId:e.aggregate_id})).amountMinor).toBe('8000');
+      expect(await db.manager.count(SalePaymentEntity)).toBe(0);
+    } else {
+      expect((await db.manager.findOneByOrFail(SalePaymentEntity,{saleId:e.aggregate_id})).amountMinor).toBe('8000');
+    }
+  });
+  it('oferta v2: evento, proyección, pull y duplicado conservan snapshot; precio actual distinto',async()=>{
+    await knownPrice();
+    const e=v2Sale();
+    await db.manager.update(ProductVariantEntity,{id:variantId},{salePriceMinor:'15000',offerPriceMinor:null,active:false});
+    expect((await push(e)).status).toBe('accepted');
+    expect((await push(e)).status).toBe('duplicate');
+    const stored=await db.manager.findOneByOrFail(SaleItemEntity,{saleId:e.aggregate_id});
+    expect(stored.snapshot).toEqual((e.payload.lines as any[])[0]);
+    expect((await db.manager.findOneByOrFail(SaleEntity,{id:e.aggregate_id})).pricingMode).toBe('offer');
+    expect(await db.manager.count(SalePaymentEntity)).toBe(1);
+    const pulled=await service.pullEvents({device_id:'other',since:0});
+    expect(pulled.events.find(x=>x.event_id===e.event_id)?.payload).toEqual(expect.objectContaining({pricing_contract_version:2,pricing_mode:'offer',lines:e.payload.lines}));
+  });
+  it('precio y consumo refieren eventos diferentes aceptados; no compara precios entre ellos',async()=>{
+    await knownPrice();
+    const old=configId;
+    const oldRow=await db.manager.findOneByOrFail(EventEntity,{eventId:old});
+    configId=randomUUID();
+    const payload=structuredClone(oldRow.payload);
+    Object.assign((payload.variants as any[])[0],{sale_price_minor:12000,offer_price_minor:null,standard_cost_minor:999});
+    await db.manager.save(EventEntity,{eventId:configId,aggregateType:'product',aggregateId:productId,eventType:'producto_creado',deviceId:'tablet',userId:'user',createdAtLocal:new Date(),syncStatus:EventSyncStatus.SYNCED,payload});
+    const e=v2Sale(old);
+    expect((await push(e)).status).toBe('accepted');
+    expect((await db.manager.findOneByOrFail(InventoryBalanceEntity,{inventoryItemId:itemId})).quantityOnHandAtomic).toBe('-1');
+  });
+  it('oferta medida por receta conserva cantidad y valida consumo histórico con half-up',async()=>{
+    await seedConfiguration('recipe',true);await knownPrice();
+    const e=v2Sale(configId,'offer','recipe',true);
+    expect((await push(e)).status).toBe('accepted');
+    const line=await db.manager.findOneByOrFail(SaleItemEntity,{saleId:e.aggregate_id});
+    expect(line.totalMinor).toBe('4000');expect(line.snapshot.snapshot.measured_quantity_atomic).toBe(1);
+    expect((await db.manager.findOneByOrFail(InventoryBalanceEntity,{inventoryItemId:itemId})).quantityOnHandAtomic).toBe('-2');
+  });
+  it('modo offer con precio capturado de evento legado sin oferta usa normal acreditado',async()=>{
+    const e=v2Sale();const snapshot=(e.payload.lines as any[])[0].snapshot;
+    Object.assign(snapshot,{offer_price_minor_snapshot:null,effective_price_source:'normal',unit_price_minor:10000,standard_cost_minor_snapshot:null});
+    Object.assign(e.payload,{total_minor:10000,change_minor:10000});
+    expect((await push(e)).status).toBe('accepted');
+  });
+  it('venta mixta conserva legado sin etiquetarlo y snapshot v2 sin perderlo',async()=>{
+    await knownPrice();const e=v2Sale();(e.payload.lines as any[]).push((sale().payload.lines as any[])[0]);
+    Object.assign(e.payload,{total_minor:18000,change_minor:2000});
+    expect((await push(e)).status).toBe('accepted');
+    const lines=await db.manager.find(SaleItemEntity,{where:{saleId:e.aggregate_id},order:{sortOrder:'ASC'}});
+    expect(lines[0].snapshot.snapshot.price_snapshot_version).toBe(2);expect(lines[1].snapshot.snapshot.price_snapshot_version).toBeUndefined();
+  });
+  for(const changed of ['price','cost','offer','foreign','missing','source','dependency']) {
+    it(`oferta v2 rechaza manipulación ${changed} sin venta/pago/consumo`,async()=>{
+      await knownPrice();const e=v2Sale();const line=(e.payload.lines as any[])[0];
+      if(changed==='price') line.snapshot.normal_price_minor_snapshot=10001;
+      if(changed==='cost') line.snapshot.standard_cost_minor_snapshot=901;
+      if(changed==='offer') line.snapshot.offer_price_minor_snapshot=7999;
+      if(changed==='foreign') {const base=await db.manager.findOneByOrFail(EventEntity,{eventId:configId});base.aggregateId=randomUUID();await db.manager.save(base);}
+      if(changed==='missing') {line.snapshot.price_configuration_event_id=randomUUID();(e.payload.dependency_event_ids as string[]).push(line.snapshot.price_configuration_event_id);}
+      if(changed==='source') line.snapshot.effective_price_source='normal';
+      if(changed==='dependency') {line.snapshot.price_configuration_event_id=randomUUID();}
+      expect(['rejected','conflict']).toContain((await push(e)).status);
+      expect(await db.manager.count(SaleEntity)).toBe(0);expect(await db.manager.count(SalePaymentEntity)).toBe(0);expect(await db.manager.count(InventoryMovementEntity)).toBe(0);
+    });
   }
   it('caja: sale_payment aplicado sin cambio y abono real, corte por movimientos',async()=>{
     const opening:PushEventDto={event_id:randomUUID(),aggregate_id:randomUUID(),aggregate_type:'cash_session',event_type:'caja_abierta',device_id:'tablet',user_id:'user',created_at_local:new Date().toISOString(),base_version:1,payload:{opening_minor:1000,opened_at_ms:Date.now()}};

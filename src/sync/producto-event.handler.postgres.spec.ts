@@ -45,6 +45,7 @@ runPostgresIntegration('ProductoEventHandler con PostgreSQL real', () => {
       ...connection,
       schema,
       entities: [
+        ...[__dirname + '/../entities/*.entity.ts'],
         SupplierEntity,
         VariantSupplierEntity,
         ClienteEntity,
@@ -93,6 +94,34 @@ runPostgresIntegration('ProductoEventHandler con PostgreSQL real', () => {
     `);
   });
 
+  it.each([null,2000])('oferta %s: promoción, bloqueo escritor legado, baja y replay conservan conocimiento', async(offerPrice)=>{
+    const productId='00000000-0000-4000-8000-000000000001';
+    const variantId='00000000-0000-4000-8000-000000000002';
+    const baseId='00000000-0000-4000-8000-000000000003';
+    const state={product:{name:'Café',category_id:null},variants:[{variant_id:variantId,name:null,sale_price_minor:2500,standard_cost_minor:0,sort_order:0}],dependencies:[]};
+    const create:PushEventDto={event_id:baseId,aggregate_type:'product',aggregate_id:productId,event_type:'producto_creado',device_id:'tablet',user_id:'user',created_at_local:new Date().toISOString(),base_version:1,payload:state};
+    const apply=(e:PushEventDto)=>database.transaction(m=>handler.apply(m,e));
+    const initial=await apply(create);expect(initial.status).toBe('accepted');
+    const known=structuredClone(state);Object.assign(known.variants[0],{offer_price_minor:null});
+    const after=structuredClone(known);Object.assign(after.variants[0],{offer_price_minor:offerPrice});
+    const update:PushEventDto={...create,event_id:'00000000-0000-4000-8000-000000000004',event_type:'producto_actualizado',base_version:1,base_server_sequence:initial.server_sequence!,payload:{base_event_id:baseId,before:known,after}};
+    const promoted=await apply(update);expect(promoted.status).toBe('accepted');
+    expect((await database.manager.findOneByOrFail(ProductVariantEntity,{id:variantId})).offerPriceMinor).toBe(offerPrice == null ? null : String(offerPrice));
+    const legacy={...update,event_id:'00000000-0000-4000-8000-000000000005',base_version:2,base_server_sequence:promoted.server_sequence!,payload:{base_event_id:update.event_id,before:state,after:state}};
+    expect((await apply(legacy)).status).toBe('rejected');
+    const deletion={...legacy,event_id:'00000000-0000-4000-8000-000000000006',payload:{base_event_id:update.event_id,before:state,after:null,delete_product:true}};
+    expect((await apply(deletion)).status).toBe('rejected');
+    expect((await apply({...deletion,event_id:'00000000-0000-4000-8000-000000000007',payload:{...deletion.payload,before:after}})).status).toBe('accepted');
+    expect((await database.manager.findOneByOrFail(ProductVariantEntity,{id:variantId})).offerPriceMinor).toBe(offerPrice == null ? null : String(offerPrice));
+    await database.query(`TRUNCATE "${schema}".products, "${schema}".events RESTART IDENTITY CASCADE`);
+    const replayCreate=await apply(create);
+    const replayUpdate=await apply({...update,base_server_sequence:replayCreate.server_sequence!});
+    expect(replayUpdate.status).toBe('accepted');
+    const replayDelete=await apply({...deletion,event_id:'00000000-0000-4000-8000-000000000007',base_server_sequence:replayUpdate.server_sequence!,payload:{...deletion.payload,before:after}});
+    expect(replayDelete.status).toBe('accepted');
+    const projected=await database.manager.findOneByOrFail(ProductVariantEntity,{id:variantId});
+    expect(projected.offerPriceMinor).toBe(offerPrice == null ? null : String(offerPrice));expect(projected.active).toBe(false);
+  });
   for (const dependency of ['none', 'inventory', 'recipe']) {
     it(`desactiva producto y variantes históricas con ${dependency} conservando inventario`, async () => {
       const itemId = '00000000-0000-4000-8000-000000000030';

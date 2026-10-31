@@ -307,6 +307,34 @@ integration('Ajustes PostgreSQL + HTTP aislados', () => {
       ).events.at(-1)?.event_id,
     ).toBe(p.event_id);
   });
+  it.each(['return', 'void'])('S4 oferta histórica %s por HTTP conserva cobro y devolución con catálogo distinto', async (kind) => {
+    const original = structuredClone(fixture.original);
+    const priceId = randomUUID();
+    original.pricing_contract_version = 2;
+    original.pricing_mode = 'offer';
+    original.dependency_event_ids.push(priceId);
+    const line = original.lines[0];
+    Object.assign(line.snapshot, {
+      price_snapshot_version: 2, normal_price_minor_snapshot: 700,
+      offer_price_minor_snapshot: 500, unit_price_minor: 500,
+      effective_price_source: 'offer', price_selection: 'inherit',
+      price_configuration_event_id: priceId,
+    });
+    await db.manager.update(EventEntity, {eventId: p.confirmation_event_id}, {payload: original});
+    await db.manager.update(SaleItemEntity, {id: line.sale_item_id}, {snapshot: line});
+    await db.manager.update(ProductVariantEntity, {id: line.snapshot.variant_id}, {
+      salePriceMinor: '9000', offerPriceMinor: '100', standardCostMinor: '8000', active: false,
+    });
+    const adjustment = kind === 'return' ? partial() : p;
+    expect((await push(envelope(adjustment))).status).toBe('accepted');
+    expect((await push(envelope(adjustment))).status).toBe('duplicate');
+    expect((await db.manager.findOneByOrFail(SaleAdjustmentEntity, {id: adjustment.operation_id})).totalMinor)
+      .toBe(String(adjustment.total_minor));
+    expect((await db.manager.findOneByOrFail(EventEntity, {eventId: p.confirmation_event_id})).payload).toEqual(original);
+    expect((await db.manager.findOneByOrFail(SaleItemEntity, {id: line.sale_item_id})).snapshot).toEqual(line);
+    const pulled = await service.pullEvents({since: sequence - 1, limit: 100});
+    expect(pulled.events.find(e => e.event_id === p.confirmation_event_id)?.payload).toEqual(original);
+  });
   it('S04 manipulación rechaza sin efectos; S06 contenido diferente rápido', async () => {
     const bad = structuredClone(p);
     bad.total_minor++;

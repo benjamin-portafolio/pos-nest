@@ -2,6 +2,12 @@ import { CashBindingPayload } from './cash-binding.payload';
 import { requiredRecord, requiredUuidV4 } from './inventory-movement.payload';
 
 export interface SaleSnapshot {
+  price_snapshot_version?: 2;
+  normal_price_minor_snapshot?: number;
+  offer_price_minor_snapshot?: number | null;
+  effective_price_source?: 'normal' | 'offer';
+  price_selection?: 'inherit';
+  price_configuration_event_id?: string;
   variant_id: string;
   product_name_snapshot: string;
   variant_name_snapshot: string | null;
@@ -93,6 +99,45 @@ function parseLine(value: unknown): ConfirmedSaleLine {
       1,
     ),
   };
+  const priceKeys = [
+    'price_snapshot_version',
+    'normal_price_minor_snapshot',
+    'offer_price_minor_snapshot',
+    'effective_price_source',
+    'price_selection',
+    'price_configuration_event_id',
+  ];
+  if (priceKeys.some((k) => Object.prototype.hasOwnProperty.call(s, k))) {
+    if (
+      !priceKeys.every((k) => Object.prototype.hasOwnProperty.call(s, k)) ||
+      s.price_snapshot_version !== 2 ||
+      s.price_selection !== 'inherit' ||
+      !['normal', 'offer'].includes(s.effective_price_source as string)
+    )
+      throw new Error('Snapshot de precio v2 incompleto.');
+    snapshot.price_snapshot_version = 2;
+    snapshot.normal_price_minor_snapshot = integer(
+      s.normal_price_minor_snapshot,
+      1,
+    );
+    snapshot.offer_price_minor_snapshot =
+      s.offer_price_minor_snapshot === null
+        ? null
+        : integer(s.offer_price_minor_snapshot, 1);
+    if (
+      snapshot.offer_price_minor_snapshot != null &&
+      snapshot.offer_price_minor_snapshot > snapshot.normal_price_minor_snapshot
+    )
+      throw new Error('Oferta mayor al normal.');
+    snapshot.effective_price_source = s.effective_price_source as
+      | 'normal'
+      | 'offer';
+    snapshot.price_selection = 'inherit';
+    snapshot.price_configuration_event_id = requiredUuidV4(
+      s.price_configuration_event_id,
+      'price_configuration_event_id',
+    );
+  }
   const measured = snapshot.sale_mode_snapshot === 'measured';
   if (
     (!measured && snapshot.sale_mode_snapshot !== 'unit') ||
@@ -189,6 +234,8 @@ export class VentaConfirmadaPayload {
     readonly occurredAtMs: number | null,
     readonly paymentReference: string | null,
     readonly cash: CashBindingPayload | null,
+    readonly pricingContractVersion: 2 | null,
+    readonly pricingMode: 'normal' | 'offer' | null,
   ) {}
   static fromJson(j: Record<string, unknown>): VentaConfirmadaPayload {
     if (
@@ -228,12 +275,44 @@ export class VentaConfirmadaPayload {
     ) {
       throw new Error('Cliente o crédito inválido.');
     }
+    const version = Object.prototype.hasOwnProperty.call(
+      j,
+      'pricing_contract_version',
+    );
+    const mode = Object.prototype.hasOwnProperty.call(j, 'pricing_mode');
+    if (
+      version !== mode ||
+      (version &&
+        (j.pricing_contract_version !== 2 ||
+          !['normal', 'offer'].includes(j.pricing_mode as string)))
+    )
+      throw new Error('Contrato de precio inválido.');
     const lines = j.lines.map(parseLine);
+    for (const { snapshot: s } of lines) {
+      if (s.price_snapshot_version === 2) {
+        if (!version) throw new Error('Línea v2 requiere contrato v2.');
+        const offer =
+          j.pricing_mode === 'offer' && s.offer_price_minor_snapshot != null;
+        if (
+          s.effective_price_source !== (offer ? 'offer' : 'normal') ||
+          s.unit_price_minor !==
+            (offer
+              ? s.offer_price_minor_snapshot
+              : s.normal_price_minor_snapshot)
+        )
+          throw new Error('Precio efectivo inconsistente.');
+      }
+    }
     const dependencies = j.dependency_event_ids.map((v) =>
       requiredUuidV4(v, 'dependency'),
     );
-    const cash = CashBindingPayload.optional(j.cash, j.payment_method as string, integer(j.total_minor));
-    if (cash && !dependencies.includes(cash.openingEventId)) dependencies.push(cash.openingEventId);
+    const cash = CashBindingPayload.optional(
+      j.cash,
+      j.payment_method as string,
+      integer(j.total_minor),
+    );
+    if (cash && !dependencies.includes(cash.openingEventId))
+      dependencies.push(cash.openingEventId);
     const total = integer(j.total_minor),
       received = integer(j.received_minor),
       change = integer(j.change_minor);
@@ -251,7 +330,12 @@ export class VentaConfirmadaPayload {
       (clienteEventId != null && !dependencies.includes(clienteEventId)) ||
       new Set(lines.map((l) => l.sale_item_id)).size !== lines.length ||
       new Set(movements).size !== movements.length ||
-      !lines.every((l) => dependencies.includes(l.configuration_event_id))
+      !lines.every(
+        (l) =>
+          dependencies.includes(l.configuration_event_id) &&
+          (l.snapshot.price_configuration_event_id == null ||
+            dependencies.includes(l.snapshot.price_configuration_event_id)),
+      )
     )
       throw new Error('Total, pago o identidades inconsistentes.');
     return new VentaConfirmadaPayload(
@@ -268,11 +352,13 @@ export class VentaConfirmadaPayload {
       credit ? (j.occurred_at_ms as number) : null,
       reference,
       CashBindingPayload.optional(j.cash, j.payment_method as string, total),
+      version ? 2 : null,
+      version ? (j.pricing_mode as 'normal' | 'offer') : null,
     );
   }
   toJson(): Record<string, unknown> {
     return {
-      ...(this.cash ? {cash:this.cash.toJson()} : {}),
+      ...(this.cash ? { cash: this.cash.toJson() } : {}),
       payment_id: this.paymentId,
       payment_method: this.paymentMethod,
       ...(this.paymentReference != null
@@ -288,6 +374,12 @@ export class VentaConfirmadaPayload {
             cliente_nombre: this.clienteNombre,
           }
         : {}),
+      ...(this.pricingContractVersion == null
+        ? {}
+        : {
+            pricing_contract_version: this.pricingContractVersion,
+            pricing_mode: this.pricingMode,
+          }),
       currency: 'MXN',
       total_minor: this.totalMinor,
       received_minor: this.receivedMinor,

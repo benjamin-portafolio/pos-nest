@@ -66,6 +66,7 @@ integration(
         extra: { options: `-c search_path=${schema},public` },
         synchronize: true,
         entities: [
+        ...[__dirname + '/../entities/*.entity.ts'],
           SupplierEntity,
           VariantSupplierEntity,
           ProductEntity,

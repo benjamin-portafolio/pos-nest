@@ -20,6 +20,8 @@ export interface ProductoCreadoVariantValue {
   nameKey: string | null;
   barcode: string | null;
   salePriceMinor: number;
+  /** undefined conserva ausencia histórica; null acredita oferta retirada. */
+  offerPriceMinor?: number | null;
   standardCostMinor: number | null;
   inventoryItemId: string | null;
   /** undefined: legado ausente; null: aviso desactivado conocido; número: átomos. */
@@ -192,6 +194,27 @@ export class ProductoCreadoPayload {
     );
   }
 
+  get knowsOfferPrice(): boolean {
+    return this.variants[0]?.offerPriceMinor !== undefined;
+  }
+  static knowsOfferPriceJson(json: Record<string, unknown>): boolean {
+    return ProductoCreadoPayload.fromJson(json).knowsOfferPrice;
+  }
+  withKnownOfferPrice(): ProductoCreadoPayload {
+    return new ProductoCreadoPayload(
+      this.name,
+      this.categoryId,
+      this.saleConfiguration,
+      this.variants.map((v) => ({
+        ...v,
+        offerPriceMinor: v.offerPriceMinor ?? null,
+      })),
+      this.categoryDependency,
+      this.inventoryDependencies,
+      this.supplierDependencies,
+    );
+  }
+
   get knowsMinimumStock(): boolean {
     return this.variants[0]?.minimumStockAtomic !== undefined;
   }
@@ -294,6 +317,9 @@ export class ProductoCreadoPayload {
         sku: null,
         barcode: variant.barcode,
         sale_price_minor: variant.salePriceMinor,
+        ...(variant.offerPriceMinor === undefined
+          ? {}
+          : { offer_price_minor: variant.offerPriceMinor }),
         standard_cost_minor: variant.standardCostMinor,
         ...(variant.minimumStockAtomic === undefined
           ? {}
@@ -396,6 +422,17 @@ function parseVariant(
         )
       : null,
     inventoryItemId,
+    offerPriceMinor: Object.prototype.hasOwnProperty.call(
+      variant,
+      'offer_price_minor',
+    )
+      ? variant.offer_price_minor === null
+        ? null
+        : positiveSafeInteger(
+            variant.offer_price_minor,
+            `${fieldName}.offer_price_minor`,
+          )
+      : undefined,
     minimumStockAtomic: Object.prototype.hasOwnProperty.call(
       variant,
       'minimum_stock_atomic',
@@ -441,6 +478,21 @@ function validateVariants(variants: ProductoCreadoVariantValue[]): void {
         variant.minimumStockAtomic,
         'minimum_stock_atomic',
       );
+  }
+  if (
+    variants.some(
+      (v) =>
+        (v.offerPriceMinor !== undefined) !==
+        (variants[0].offerPriceMinor !== undefined),
+    )
+  )
+    throw new Error('Snapshot parcial de offer_price_minor.');
+  for (const v of variants) {
+    if (v.offerPriceMinor != null) {
+      positiveSafeInteger(v.offerPriceMinor, 'offer_price_minor');
+      if (v.offerPriceMinor > v.salePriceMinor)
+        throw new Error('La oferta supera el precio normal.');
+    }
   }
   const ids = new Set<string>();
   const nameKeys = new Set<string>();

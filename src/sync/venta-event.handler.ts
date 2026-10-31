@@ -125,7 +125,9 @@ export class VentaEventHandler {
     }
     // La receta actual y el saldo no son bases optimistas de una venta histórica.
     for (const line of p.lines) {
-      const error = await this.validateHistory(manager, line);
+      const error =
+        (await this.validateHistory(manager, line)) ??
+        (await this.validatePriceHistory(manager, line));
       if (error) return this.saveOutcome(manager, event, 'rejected', error);
       const variant = await manager.findOneBy(ProductVariantEntity, {
         id: line.snapshot.variant_id,
@@ -205,6 +207,8 @@ export class VentaEventHandler {
       userId: event.user_id,
       deviceId: event.device_id,
       status: 'confirmada',
+      pricingContractVersion: p.pricingContractVersion,
+      pricingMode: p.pricingMode,
       clienteId: p.clienteId,
       totalMinor: String(p.totalMinor),
       currency: 'MXN',
@@ -270,6 +274,46 @@ export class VentaEventHandler {
     await this.saveRefs(manager, saved, p);
     return this.result(saved, 'accepted');
   }
+  private async validatePriceHistory(
+    manager: EntityManager,
+    l: ConfirmedSaleLine,
+  ): Promise<string | null> {
+    const s = l.snapshot;
+    if (s.price_snapshot_version !== 2) return null;
+    const base = await manager.findOneBy(EventEntity, {
+      eventId: s.price_configuration_event_id!,
+    });
+    if (
+      !base ||
+      base.aggregateType !== 'product' ||
+      base.aggregateId !== l.product_id ||
+      base.syncStatus !== EventSyncStatus.SYNCED
+    )
+      return 'Precio histórico inexistente.';
+    let state: ProductoCreadoPayload;
+    if (base.eventType === ProductoCreadoPayload.eventType)
+      state = ProductoCreadoPayload.fromJson(base.payload);
+    else if (base.eventType === ProductoActualizadoPayload.eventType) {
+      const update = ProductoActualizadoPayload.fromJson(base.payload);
+      if (update.deleteProduct) return 'Precio de configuración desactivada.';
+      state = update.after;
+    } else return 'Evento de precio inválido.';
+    const v = state.variants.find((v) => v.id === s.variant_id);
+    const config = state.saleConfiguration;
+    if (
+      !v ||
+      v.salePriceMinor !== s.normal_price_minor_snapshot ||
+      (v.offerPriceMinor ?? null) !== s.offer_price_minor_snapshot ||
+      v.standardCostMinor !== s.standard_cost_minor_snapshot ||
+      String(config.mode) !== s.sale_mode_snapshot ||
+      (config.mode === SaleMode.MEASURED &&
+        (config.saleUnitId !== l.sale_unit_id ||
+          config.priceReferenceQuantityAtomic !==
+            s.price_reference_quantity_atomic_snapshot))
+    )
+      return 'Precio o costo no coincide con su configuración histórica.';
+    return null;
+  }
   private async validateHistory(
     manager: EntityManager,
     l: ConfirmedSaleLine,
@@ -279,6 +323,7 @@ export class VentaEventHandler {
     });
     if (
       !base ||
+      base.aggregateType !== 'product' ||
       base.aggregateId !== l.product_id ||
       base.syncStatus !== EventSyncStatus.SYNCED
     )

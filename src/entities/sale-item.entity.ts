@@ -28,6 +28,6 @@ export class SaleItemEntity extends SyncProjectionEntity {
   variant: ProductVariantEntity;
   @Column({ name: 'total_minor', type: 'bigint' }) totalMinor: string;
   @Column({ name: 'sort_order', type: 'integer' }) sortOrder: number;
-  // Snapshot tipado completo: precio, medida y configuración histórica de consumo.
+  // Snapshot tipado legado o v2: conserva precio y su evento histórico separado del consumo.
   @Column({ type: 'jsonb' }) snapshot: ConfirmedSaleLine;
 }

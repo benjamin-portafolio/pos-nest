@@ -184,6 +184,16 @@ export class ProductoEventHandler {
           event,
           'Actualiza la app para editar o borrar este artículo.',
         );
+      const knowsOfferPrice =
+        ProductoCreadoPayload.knowsOfferPriceJson(
+          baseState as Record<string, unknown>,
+        ) || storedVariants.some((v) => v.offerPriceMinor != null);
+      if (knowsOfferPrice && !update.before.knowsOfferPrice)
+        return this.saveRejectedEvent(
+          manager,
+          event,
+          'Actualiza la app para editar o borrar este artículo: oferta conocida.',
+        );
       const oldValues: ProductoCreadoVariantValue[] = [];
       let hasStoredSuppliers = false;
       for (const variant of variants.sort(
@@ -204,6 +214,11 @@ export class ProductoEventHandler {
           nameKey: variant.nameKey,
           barcode: variant.barcode,
           salePriceMinor: Number(variant.salePriceMinor),
+          offerPriceMinor: knowsOfferPrice
+            ? variant.offerPriceMinor == null
+              ? null
+              : Number(variant.offerPriceMinor)
+            : undefined,
           standardCostMinor:
             variant.standardCostMinor === null
               ? null
@@ -670,6 +685,10 @@ export class ProductoEventHandler {
             nameKey: variant.nameKey,
             barcode: variant.barcode,
             salePriceMinor: String(variant.salePriceMinor),
+            offerPriceMinor:
+              variant.offerPriceMinor == null
+                ? null
+                : String(variant.offerPriceMinor),
             standardCostMinor:
               variant.standardCostMinor === null
                 ? null
@@ -728,6 +747,10 @@ export class ProductoEventHandler {
             nameKey: variant.nameKey,
             barcode: variant.barcode,
             salePriceMinor: String(variant.salePriceMinor),
+            offerPriceMinor:
+              variant.offerPriceMinor == null
+                ? null
+                : String(variant.offerPriceMinor),
             standardCostMinor:
               variant.standardCostMinor === null
                 ? null

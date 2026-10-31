@@ -47,6 +47,10 @@ import { SyncProjectionEntity } from './sync-projection.entity';
   'ck_product_variants_minimum_stock_range',
   '"minimum_stock_atomic" IS NULL OR "minimum_stock_atomic" BETWEEN 0 AND 9007199254740991',
 )
+@Check(
+  'ck_product_variants_offer_price',
+  '"offer_price_minor" IS NULL OR ("offer_price_minor" BETWEEN 1 AND 9007199254740991 AND "offer_price_minor" <= "sale_price_minor")',
+)
 export class ProductVariantEntity extends SyncProjectionEntity {
   @PrimaryColumn('uuid', {
     name: 'variant_id',
@@ -98,6 +102,15 @@ export class ProductVariantEntity extends SyncProjectionEntity {
     comment: 'Precio entero expresado en la unidad monetaria menor.',
   })
   salePriceMinor: string;
+
+  @Column({
+    name: 'offer_price_minor',
+    type: 'bigint',
+    nullable: true,
+    comment:
+      'Oferta opcional; no modifica costo ni acredita presencia histórica.',
+  })
+  offerPriceMinor: string | null;
 
   @Column({
     name: 'standard_cost_minor',

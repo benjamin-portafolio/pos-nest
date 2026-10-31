@@ -143,7 +143,7 @@ export class SyncService {
 
     return {
       status: 'ok',
-      capabilities: ['product_suppliers_v1', ...(this.saleAdjustmentEventHandler ? ['sale_adjustments_v1', 'sale_reconciliations_v1'] : [])],
+      capabilities: ['offer_pricing_v2', 'product_suppliers_v1', ...(this.saleAdjustmentEventHandler ? ['sale_adjustments_v1', 'sale_reconciliations_v1'] : [])],
       latest_server_sequence: latestServerSequence,
       server_time: new Date().toISOString(),
     };

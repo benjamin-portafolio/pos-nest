@@ -14,6 +14,8 @@ export class ProductoActualizadoPayload {
       throw new Error(
         'La edición debe conocer suppliers en before y after, o conservar ambos estados legados.',
       );
+    if (before.knowsOfferPrice !== after.knowsOfferPrice)
+      throw new Error('La edición debe conocer oferta en before y after.');
     if (before.knowsMinimumStock !== after.knowsMinimumStock)
       throw new Error(
         'La edición debe conocer minimum_stock_atomic en before y after, o conservar ambos estados legados.',
@@ -75,6 +77,7 @@ export class ProductoActualizadoPayload {
         v.nameKey === other.nameKey &&
         v.barcode === other.barcode &&
         v.salePriceMinor === other.salePriceMinor &&
+        (v.offerPriceMinor ?? null) === (other.offerPriceMinor ?? null) &&
         v.standardCostMinor === other.standardCostMinor &&
         v.inventoryItemId === other.inventoryItemId &&
         (v.minimumStockAtomic ?? null) === (other.minimumStockAtomic ?? null) &&
@@ -99,6 +102,9 @@ export class ProductoActualizadoPayload {
     // de ausencia a null no produce un cambio de negocio en sameState.
     // Los consumidores conservan sus checks de evento, versión y secuencia.
     if (current.knowsMinimumStock && !before.knowsMinimumStock) return false;
+    if (current.knowsOfferPrice && !before.knowsOfferPrice) return false;
+    if (!current.knowsOfferPrice && before.knowsOfferPrice)
+      current = current.withKnownOfferPrice();
     const normalized =
       !current.knowsMinimumStock && before.knowsMinimumStock
         ? current.withKnownMinimumStock()
