@@ -1,3 +1,4 @@
+import { RecipeComponentEntity } from '../entities/recipe-component.entity';
 import { ClienteEntity } from '../entities/cliente.entity';
 import { CategoryEntity } from '../entities/category.entity';
 import { ProductEntity } from '../entities/product.entity';
@@ -83,6 +84,8 @@ runPostgresIntegration('InventoryEventHandler con PostgreSQL real', () => {
   beforeEach(async () => {
     await database.query(`
       TRUNCATE TABLE
+        "${schema}"."sales",
+        "${schema}"."products",
         "${schema}"."inventory_movements",
         "${schema}"."inventory_balances",
         "${schema}"."inventory_items",
@@ -193,6 +196,197 @@ runPostgresIntegration('InventoryEventHandler con PostgreSQL real', () => {
         })
       ).quantityOnHandAtomic,
     ).toBe('250');
+  });
+
+  function deleteEvent(base: PushEventDto): PushEventDto {
+    return {
+      ...base,
+      event_id: '40000000-0000-4000-8000-000000000020',
+      event_type: 'recurso_inventario_eliminado',
+      local_sequence: 2,
+      payload: { base_event_id: base.event_id },
+    };
+  }
+
+  async function linkedVariant(itemId: string | null) {
+    const productId = '50000000-0000-4000-8000-000000000001';
+    const variantId = '60000000-0000-4000-8000-000000000001';
+    await database.manager.insert(ProductEntity, {
+      id: productId,
+      name: 'Producto',
+    });
+    await database.manager.insert(ProductVariantEntity, {
+      id: variantId,
+      productId,
+      salePriceMinor: '100',
+      sortOrder: 0,
+      inventoryItemId: itemId,
+    });
+    return variantId;
+  }
+
+  it('push, duplicado y pull conservan la baja lógica y su saldo', async () => {
+    const service = new SyncService(
+      database,
+      { notifyEventsAvailable: jest.fn() } as unknown as EventsGateway,
+      {} as SyncConflictService,
+      undefined,
+      undefined,
+      handler,
+    );
+    const base = inventoryEvent({ delta: null });
+    await service.pushEvents({ device_id: base.device_id, events: [base] });
+    const deletion = deleteEvent(base);
+    const first = await service.pushEvents({
+      device_id: base.device_id,
+      events: [deletion],
+    });
+    const repeated = await service.pushEvents({
+      device_id: base.device_id,
+      events: [deletion],
+    });
+    expect(first.results[0].status).toBe('accepted');
+    expect(repeated.results[0].status).toBe('duplicate');
+    const item = await database.manager.findOneByOrFail(InventoryItemEntity, {
+      id: base.aggregate_id,
+    });
+    expect(item.active).toBe(false);
+    expect(item.version).toBe(2);
+    expect(item.createdEventId).toBe(base.event_id);
+    expect(await database.manager.count(InventoryBalanceEntity)).toBe(1);
+    expect(await database.manager.count(EventEntity)).toBe(2);
+    const pull = await service.pullEvents({ after_server_sequence: 0 });
+    expect(pull.events.map((e) => e.event_type)).toEqual([
+      'recurso_inventario_creado',
+      'recurso_inventario_eliminado',
+    ]);
+  });
+
+  it.each([-5, 5])('rechaza saldo %s y conserva proyección', async (delta) => {
+    const base = inventoryEvent({ delta });
+    await database.transaction((m) => handler.apply(m, base));
+    const result = await database.transaction((m) =>
+      handler.apply(m, deleteEvent(base)),
+    );
+    expect(result.status).toBe('conflict');
+    expect(result.reason).toContain('existencias');
+    expect(
+      (
+        await database.manager.findOneByOrFail(InventoryItemEntity, {
+          id: base.aggregate_id,
+        })
+      ).active,
+    ).toBe(true);
+    expect(await database.manager.count(InventoryMovementEntity)).toBe(1);
+  });
+
+  it.each(['directo', 'receta'])(
+    'rechaza recurso usado por %s, incluso variante inactiva',
+    async (kind) => {
+      const base = inventoryEvent({ delta: null });
+      await database.transaction((m) => handler.apply(m, base));
+      const variantId = await linkedVariant(
+        kind === 'directo' ? base.aggregate_id : null,
+      );
+      if (kind === 'receta')
+        await database.manager.insert(RecipeComponentEntity, {
+          variantId,
+          inventoryItemId: base.aggregate_id,
+          quantityAtomic: '1',
+        });
+      await database.manager.update(
+        ProductVariantEntity,
+        { id: variantId },
+        { active: false },
+      );
+      const result = await database.transaction((m) =>
+        handler.apply(m, deleteEvent(base)),
+      );
+      expect(result.status).toBe('conflict');
+      expect(
+        (
+          await database.manager.findOneByOrFail(InventoryItemEntity, {
+            id: base.aggregate_id,
+          })
+        ).active,
+      ).toBe(true);
+    },
+  );
+
+  it.each(['borrador', 'confirmada'])(
+    'venta %s determina bloqueo, preservando historial',
+    async (status) => {
+      const base = inventoryEvent({ delta: null });
+      await database.transaction((m) => handler.apply(m, base));
+      const variantId = await linkedVariant(null);
+      const saleId = '70000000-0000-4000-8000-000000000001';
+      await database.manager.insert(SaleEntity, {
+        id: saleId,
+        userId: 'user',
+        deviceId: 'device',
+        status,
+        totalMinor: '100',
+        currency: 'MXN',
+        createdAtLocal: new Date(),
+      });
+      await database.query(
+        `INSERT INTO "${schema}".sale_items (sale_item_id, sale_id, variant_id, total_minor, sort_order, snapshot) VALUES ($1,$2,$3,100,0,$4::jsonb)`,
+        [
+          '80000000-0000-4000-8000-000000000001',
+          saleId,
+          variantId,
+          JSON.stringify({
+            consumptions: [{ inventory_item_id: base.aggregate_id }],
+          }),
+        ],
+      );
+      const result = await database.transaction((m) =>
+        handler.apply(m, deleteEvent(base)),
+      );
+      expect(result.status).toBe(
+        status === 'borrador' ? 'conflict' : 'accepted',
+      );
+      expect(await database.manager.count(SaleItemEntity)).toBe(1);
+    },
+  );
+
+  it('base obsoleta entra en conflicto; una baja aceptada bloquea nuevos movimientos', async () => {
+    const base = inventoryEvent({ delta: null });
+    await database.transaction((m) => handler.apply(m, base));
+    const stale = {
+      ...deleteEvent(base),
+      event_id: '40000000-0000-4000-8000-000000000021',
+      local_sequence: 3,
+      base_version: 2,
+    };
+    expect(
+      (await database.transaction((m) => handler.apply(m, stale))).status,
+    ).toBe('conflict');
+    expect(
+      (await database.transaction((m) => handler.apply(m, deleteEvent(base))))
+        .status,
+    ).toBe('accepted');
+    const movement = {
+      ...base,
+      event_id: '40000000-0000-4000-8000-000000000030',
+      local_sequence: 4,
+      event_type: 'movimiento_inventario_registrado',
+      base_version: 2,
+      payload: {
+        base_event_id: deleteEvent(base).event_id,
+        movement: {
+          movement_id: '30000000-0000-4000-8000-000000000030',
+          movement_type: 'stock_receipt',
+          quantity_delta_atomic: 1,
+        },
+      },
+    };
+    const result = await database.transaction((m) =>
+      handler.apply(m, movement),
+    );
+    expect(result.status).toBe('conflict');
+    expect(result.reason).toContain('inactivo');
+    expect(await database.manager.count(InventoryMovementEntity)).toBe(0);
   });
 
   it('revierte evento, refs, recurso y balance ante fallo del movimiento', async () => {

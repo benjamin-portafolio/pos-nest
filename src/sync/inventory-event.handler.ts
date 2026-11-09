@@ -1,3 +1,7 @@
+import { RecursoInventarioEliminadoPayload } from './payloads/recurso-inventario-eliminado.payload';
+import { ProductVariantEntity } from '../entities/product-variant.entity';
+import { RecipeComponentEntity } from '../entities/recipe-component.entity';
+import { SaleItemEntity } from '../entities/sale-item.entity';
 import { randomUUID } from 'crypto';
 import { Injectable } from '@nestjs/common';
 import { EntityManager } from 'typeorm';
@@ -17,6 +21,7 @@ import { SyncConflictService } from './sync-conflict.service';
 
 type InventoryPayload =
   | RecursoInventarioCreadoPayload
+  | RecursoInventarioEliminadoPayload
   | RecursoInventarioActualizadoPayload
   | MovimientoInventarioRegistradoPayload;
 
@@ -26,6 +31,7 @@ export class InventoryEventHandler {
 
   supports(eventType: string): boolean {
     return (
+      eventType === RecursoInventarioEliminadoPayload.eventType ||
       eventType === RecursoInventarioCreadoPayload.eventType ||
       eventType === RecursoInventarioActualizadoPayload.eventType ||
       eventType === MovimientoInventarioRegistradoPayload.eventType
@@ -41,6 +47,8 @@ export class InventoryEventHandler {
       return this.rejectedResult(event.event_id, identityError);
 
     switch (event.event_type) {
+      case RecursoInventarioEliminadoPayload.eventType:
+        return this.applyDeletion(manager, event);
       case RecursoInventarioCreadoPayload.eventType:
         return this.applyCreation(manager, event);
       case RecursoInventarioActualizadoPayload.eventType:
@@ -194,6 +202,98 @@ export class InventoryEventHandler {
       );
     }
     return this.toResult(savedEvent, 'accepted');
+  }
+
+  private async applyDeletion(
+    manager: EntityManager,
+    event: PushEventDto,
+  ): Promise<PushEventResultDto> {
+    const parsed = this.parsePayload(event);
+    if ('error' in parsed)
+      return this.saveRejectedEvent(manager, event, parsed.error);
+    const payload = parsed.payload as RecursoInventarioEliminadoPayload;
+    const envelopeError = this.validateMutableEnvelope(event);
+    if (envelopeError)
+      return this.saveRejectedEvent(manager, event, envelopeError);
+
+    // El bloqueo del recurso serializa movimientos, ventas y nuevos vínculos.
+    const item = await manager.findOne(InventoryItemEntity, {
+      where: { id: event.aggregate_id },
+      lock: { mode: 'pessimistic_write' },
+    });
+    const baseError = !item
+      ? 'El recurso no existe.'
+      : !item.active
+        ? 'El recurso está inactivo.'
+        : this.validateBase(event, payload.baseEventId, item);
+    let reason = baseError;
+    if (!reason && item) {
+      const balance = await manager.findOne(InventoryBalanceEntity, {
+        where: { inventoryItemId: item.id },
+        lock: { mode: 'pessimistic_write' },
+      });
+      if (!balance) reason = 'El recurso no tiene saldo; requiere revisión.';
+      else if (
+        BigInt(balance.quantityOnHandAtomic) !== 0n ||
+        BigInt(balance.quantityAvailableAtomic) !== 0n
+      ) {
+        reason =
+          'No se puede eliminar un recurso con existencias distintas de cero.';
+      } else if (
+        await manager.findOneBy(ProductVariantEntity, {
+          inventoryItemId: item.id,
+        })
+      ) {
+        reason = 'El recurso está vinculado a un producto.';
+      } else if (
+        await manager.findOneBy(RecipeComponentEntity, {
+          inventoryItemId: item.id,
+        })
+      ) {
+        reason = 'El recurso forma parte de una receta.';
+      } else {
+        const pending = await manager
+          .createQueryBuilder(SaleItemEntity, 'line')
+          .innerJoin('line.sale', 'sale')
+          .where('line.active = true AND sale.status IN (:...statuses)', {
+            statuses: ['borrador'],
+          })
+          .andWhere(
+            "line.snapshot->'consumptions' @> CAST(:reference AS jsonb)",
+            {
+              reference: JSON.stringify([{ inventory_item_id: item.id }]),
+            },
+          )
+          .getOne();
+        if (pending)
+          reason = 'Hay ventas pendientes que necesitan este recurso.';
+      }
+    }
+    if (reason || !item)
+      return this.saveConflict(
+        manager,
+        event,
+        payload,
+        reason ?? 'El recurso no existe.',
+        'inventory_item',
+        event.aggregate_id,
+        item?.lastEventId ?? item?.createdEventId ?? null,
+        'inventory_deletion_blocked',
+      );
+
+    const canonical = { ...event, payload: payload.toJson() };
+    const saved = await this.saveEvent(
+      manager,
+      canonical,
+      EventSyncStatus.SYNCED,
+    );
+    await this.saveEventRefs(manager, canonical, payload, saved.serverSequence);
+    item.active = false;
+    item.version += 1;
+    item.lastEventId = event.event_id;
+    item.lastServerSequence = saved.serverSequence;
+    await manager.save(item);
+    return this.toResult(saved, 'accepted');
   }
 
   private async applyUpdate(
@@ -457,6 +557,10 @@ export class InventoryEventHandler {
   ): { payload: InventoryPayload } | { error: string } {
     try {
       switch (event.event_type) {
+        case RecursoInventarioEliminadoPayload.eventType:
+          return {
+            payload: RecursoInventarioEliminadoPayload.fromJson(event.payload),
+          };
         case RecursoInventarioCreadoPayload.eventType:
           return {
             payload: RecursoInventarioCreadoPayload.fromJson(event.payload),
@@ -541,6 +645,7 @@ export class InventoryEventHandler {
     baseEventId: string,
     item: InventoryItemEntity,
   ): string | null {
+    if (!item.active) return 'El recurso está inactivo.';
     if (event.base_version !== item.version) {
       return 'La versión base no coincide con el recurso actual.';
     }
