@@ -1,3 +1,4 @@
+import { ServerStateService } from '../recovery/server-state.service';
 import { SaleAdjustmentEventHandler } from './sale-adjustment-event.handler';
 import { adjustmentDuplicateMatches, isSaleAdjustment } from './payloads/sale-adjustment-identity';
 import { ProveedorEventHandler } from './proveedor-event.handler';
@@ -136,6 +137,7 @@ export class SyncService {
     private readonly accountBalanceBaselineEventHandler?: AccountBalanceBaselineEventHandler,
     @Optional() private readonly proveedorEventHandler?: ProveedorEventHandler,
     @Optional() private readonly saleAdjustmentEventHandler?: SaleAdjustmentEventHandler,
+    @Optional() private readonly recoveryState?: ServerStateService,
   ) {}
 
   async health(): Promise<SyncHealthResponseDto> {
@@ -175,7 +177,7 @@ export class SyncService {
     }
 
     if (acceptedEvents.length > 0) {
-      this.eventsGateway.notifyEventsAvailable({
+      await this.eventsGateway.notifyEventsAvailable({
         latestServerSequence: this.maxServerSequence(acceptedEvents),
         eventTypes: [
           ...new Set(acceptedEvents.map((event) => event.eventType)),
@@ -474,7 +476,10 @@ export class SyncService {
 
     try {
       return await this.dataSource.transaction(async (manager) => {
-        if (isSupplierEvent || isProductEvent || isAdjustment) {
+        // Financial retries must recheck after acquiring the event lock. An
+        // optimistic read before the transaction lets two saves race: the loser
+        // can overwrite the accepted event with a conflict outcome.
+        if (isSupplierEvent || isProductEvent || isAdjustment || isFinancialEntryEvent) {
           await manager.query(
             'SELECT pg_advisory_xact_lock(hashtextextended($1, 0))',
             ['event:' + event.event_id.toLowerCase()],
@@ -1387,7 +1392,7 @@ export class SyncService {
       })
       .getRawOne<{ latest_server_sequence: string | number | null }>();
 
-    return Number(result?.latest_server_sequence ?? 0);
+    return Math.max(Number(result?.latest_server_sequence ?? 0),this.recoveryState?Number((await this.recoveryState.status()).baseline_high_watermark):0);
   }
 
   private toNullableString(value: string | number | null | undefined) {

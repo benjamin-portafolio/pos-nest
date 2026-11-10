@@ -2,6 +2,8 @@ import { CashBindingPayload } from './cash-binding.payload';
 import { requiredRecord, requiredUuidV4 } from './inventory-movement.payload';
 
 export interface SaleSnapshot {
+  /** Local presentation helper; never determines money or physical consumption. */
+  consumption_configuration_key?: string | null;
   price_snapshot_version?: 2;
   normal_price_minor_snapshot?: number;
   offer_price_minor_snapshot?: number | null;
@@ -99,6 +101,16 @@ function parseLine(value: unknown): ConfirmedSaleLine {
       1,
     ),
   };
+  if (Object.hasOwn(s, 'consumption_configuration_key')) {
+    if (
+      s.consumption_configuration_key !== null &&
+      typeof s.consumption_configuration_key !== 'string'
+    )
+      throw new Error('Invalid consumption configuration helper.');
+    snapshot.consumption_configuration_key = s.consumption_configuration_key as
+      | string
+      | null;
+  }
   const priceKeys = [
     'price_snapshot_version',
     'normal_price_minor_snapshot',

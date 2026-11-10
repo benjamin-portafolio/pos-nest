@@ -1,4 +1,5 @@
-import { Body, Controller, Get, Post, Query } from '@nestjs/common';
+import { ServerStateService } from '../recovery/server-state.service';
+import { Body, Controller, Get, Post, Query, Optional } from '@nestjs/common';
 import type {
   ListConflictsQueryDto,
   ListConflictsResponseDto,
@@ -19,16 +20,34 @@ import type {
   ReportConflictsDto,
   ReportConflictsResponseDto,
 } from './dto/report-conflicts.dto';
-import type { SyncHealthResponseDto } from './dto/sync-health.dto';
 import { SyncService } from './sync.service';
 
 @Controller('sync')
 export class SyncController {
-  constructor(private readonly syncService: SyncService) {}
+  constructor(
+    private readonly syncService: SyncService,
+    @Optional() private readonly serverState?: ServerStateService,
+  ) {}
 
   @Get('health')
-  health(): Promise<SyncHealthResponseDto> {
-    return this.syncService.health();
+  async health() {
+    const health = await this.syncService.health();
+    if (!this.serverState) return health;
+    const state = await this.serverState.status();
+    return {
+      ...health,
+      ...state,
+      capabilities: [
+        ...health.capabilities,
+        'recovery_transport_v1',
+        'sync_identity_v2',
+        'baseline_bootstrap_required',
+      ],
+      latest_server_sequence: Math.max(
+        health.latest_server_sequence,
+        Number(state.baseline_high_watermark),
+      ),
+    };
   }
 
   @Post('push')

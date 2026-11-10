@@ -382,11 +382,16 @@ integration('Ingresos y gastos PostgreSQL aislado', () => {
   it('push concurrente del mismo event_id produce accepted + duplicate', async () => {
     await seedRenta();
     const e = sobre('registro/sobre-entry-cash-valid.json');
-    const results = await Promise.all([push(e), push(e)]);
+    const results = await Promise.all(Array.from({ length: 8 }, () => push(e)));
     expect(results.map((r) => r.status).sort()).toEqual([
       'accepted',
-      'duplicate',
+      ...Array(7).fill('duplicate'),
     ]);
+    const original = await db.manager.findOneByOrFail(EventEntity, { eventId: e.event_id });
+    expect(original.syncStatus).toBe(EventSyncStatus.SYNCED);
+    expect(original.payload).toEqual(e.payload);
+    expect(original.createdAtServer).toBeInstanceOf(Date);
+    expect(results.filter(r => r.status === 'duplicate').every(r => r.original_sync_status === EventSyncStatus.SYNCED)).toBe(true);
     expect(await db.manager.count(EventEntity)).toBe(2);
     expect(await db.manager.count(FinancialEntryEntity)).toBe(1);
   });

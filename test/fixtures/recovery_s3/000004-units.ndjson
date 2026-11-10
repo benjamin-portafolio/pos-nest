@@ -1,0 +1,5 @@
+{"entity":"units","row":{"active":true,"atomic_factor":"1","code":"piece","dimension":"count","max_fraction_digits":0,"name":"Pieza","symbol":"pza","unit_id":"10000000-0000-4000-8000-000000000001"}}
+{"entity":"units","row":{"active":true,"atomic_factor":"1","code":"g","dimension":"mass","max_fraction_digits":0,"name":"Gramo","symbol":"g","unit_id":"10000000-0000-4000-8000-000000000002"}}
+{"entity":"units","row":{"active":true,"atomic_factor":"1000","code":"kg","dimension":"mass","max_fraction_digits":3,"name":"Kilogramo","symbol":"kg","unit_id":"10000000-0000-4000-8000-000000000003"}}
+{"entity":"units","row":{"active":true,"atomic_factor":"1","code":"ml","dimension":"volume","max_fraction_digits":0,"name":"Mililitro","symbol":"ml","unit_id":"10000000-0000-4000-8000-000000000004"}}
+{"entity":"units","row":{"active":true,"atomic_factor":"1000","code":"l","dimension":"volume","max_fraction_digits":3,"name":"Litro","symbol":"L","unit_id":"10000000-0000-4000-8000-000000000005"}}

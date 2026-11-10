@@ -1,3 +1,18 @@
+import { BaselineBootstrapService } from './recovery/baseline-bootstrap.service';
+import { BaselineBootstrapController } from './recovery/baseline-bootstrap.controller';
+import { RecoveryStagingService } from './recovery/recovery-staging.service';
+import { RecoveryValidationService } from './recovery/recovery-validation.service';
+import { RecoveryPublicationService } from './recovery/recovery-publication.service';
+import { CreateRecoveryDataset1794182400000 } from './migrations/1794182400000-CreateRecoveryDataset';
+import { RecoveryRuntimePolicyService } from './recovery/recovery-runtime-policy.service';
+import { APP_INTERCEPTOR } from '@nestjs/core';
+import { CreateRecoveryProtocol1794096000000 } from './migrations/1794096000000-CreateRecoveryProtocol';
+import { RecoveryController } from './recovery/recovery.controller';
+import { RecoverySessionService } from './recovery/recovery-session.service';
+import { RecoveryAuthorizationService } from './recovery/recovery-authorization.service';
+import { RecoveryEligibilityService } from './recovery/recovery-eligibility.service';
+import { ServerStateService } from './recovery/server-state.service';
+import { ServerStateInterceptor } from './recovery/server-state.interceptor';
 import { AddOfferPricing1793404800000 } from './migrations/1793404800000-AddOfferPricing';
 import { SaleReconciliationCreditAllocationEntity } from './entities/sale-reconciliation-credit-allocation.entity';
 import { SaleReconciliationEffectEntity } from './entities/sale-reconciliation-effect.entity';
@@ -66,7 +81,10 @@ import { FinancialReportController } from './reports/financial-report.controller
 
 @Module({
   imports: [
-    ConfigModule.forRoot({ isGlobal: true }),
+    ConfigModule.forRoot({
+      isGlobal: true,
+      ignoreEnvFile: process.env.POS_IGNORE_ENV_FILE === '1',
+    }),
     TypeOrmModule.forRootAsync({
       inject: [ConfigService],
       useFactory: (config: ConfigService) => ({
@@ -79,9 +97,22 @@ import { FinancialReportController } from './reports/financial-report.controller
         // Las relaciones/constraints de ajustes se instalan por migración explícita.
         synchronize: false,
         // Registro para ejecución explícita; nunca ejecutar migraciones al arrancar.
-        migrations: [AddOfferPricing1793404800000, AddVariantMinimumStock1792368000000, CreateSaleAdjustments1793145600000, CreateSaleReconciliationEffects1793232000000, AlignSaleAdjustmentProjectionComments1793318400000],
+        migrations: [
+          CreateRecoveryProtocol1794096000000,
+          CreateRecoveryDataset1794182400000,
+          AddOfferPricing1793404800000,
+          AddVariantMinimumStock1792368000000,
+          CreateSaleAdjustments1793145600000,
+          CreateSaleReconciliationEffects1793232000000,
+          AlignSaleAdjustmentProjectionComments1793318400000,
+        ],
         migrationsRun: false,
-        entities: [SaleReconciliationCreditAllocationEntity, SaleReconciliationEffectEntity, SaleAdjustmentEntity, SaleAdjustmentLineEntity, SaleCreditReductionEntity,
+        entities: [
+          SaleReconciliationCreditAllocationEntity,
+          SaleReconciliationEffectEntity,
+          SaleAdjustmentEntity,
+          SaleAdjustmentLineEntity,
+          SaleCreditReductionEntity,
           CreditSaleEntity,
           CustomerPaymentEntity,
           CreditAllocationEntity,
@@ -116,12 +147,25 @@ import { FinancialReportController } from './reports/financial-report.controller
     }),
   ],
   controllers: [
+    RecoveryController,
+    BaselineBootstrapController,
     AppController,
     SyncController,
     CollectionsReportController,
     FinancialReportController,
   ],
-  providers: [SaleAdjustmentEventHandler,
+  providers: [
+    RecoveryRuntimePolicyService,
+    RecoverySessionService,
+    RecoveryStagingService,
+    BaselineBootstrapService,
+    RecoveryValidationService,
+    RecoveryPublicationService,
+    RecoveryAuthorizationService,
+    RecoveryEligibilityService,
+    ServerStateService,
+    { provide: APP_INTERCEPTOR, useClass: ServerStateInterceptor },
+    SaleAdjustmentEventHandler,
     CashEventHandler,
     AccountBalanceBaselineEventHandler,
     CollectionsReportService,

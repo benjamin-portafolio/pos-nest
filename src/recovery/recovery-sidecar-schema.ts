@@ -1,0 +1,61 @@
+const common = {
+  id: 'uuid',
+  active: 'boolean',
+  version: 'integer',
+  created_event_id: 'uuid',
+  last_event_id: 'uuid',
+  last_server_sequence: 'bigint',
+};
+/** Closed, versioned wire schemas for evidence which has no PostgreSQL table. */
+export const RECOVERY_SIDECAR_COLUMNS: Record<
+  string,
+  Record<string, string>
+> = {
+  projection_provenance: {
+    entity: 'text',
+    row_id: 'uuid',
+    source_row: 'jsonb',
+    canonical_event_id: 'uuid',
+    rule: 'text',
+  },
+  inventory_item_discards: {
+    inventory_item_id: 'uuid',
+    discard_event_id: 'uuid',
+    trigger_product_event_id: 'uuid',
+  },
+  sale_delivery_incidents: {
+    ...common,
+    sale_id: 'uuid',
+    loser_event_id: 'uuid',
+    winner_event_id: 'uuid',
+    blocked_by_event_id: 'uuid',
+    reason: 'text',
+    preserved_payload_json: 'jsonb',
+    resolution_event_id: 'uuid',
+  },
+  sale_adjustment_evidence: {
+    ...common,
+    commercial_active: 'boolean',
+    sale_id: 'uuid',
+    confirmation_event_id: 'uuid',
+    base_event_id: 'uuid',
+    event_id: 'uuid',
+    kind: 'text',
+    revision: 'integer',
+    business_date: 'text',
+    occurred_at_ms: 'bigint',
+    utc_offset_minutes: 'integer',
+    reason: 'text',
+    user_id: 'text',
+    device_id: 'text',
+    amount_minor: 'bigint',
+    method: 'text',
+    sale_payment_id: 'uuid',
+    cliente_id: 'uuid',
+    currency: 'text',
+    settlement_reference: 'text',
+    cash_enabled: 'boolean',
+    settlement_action: 'text',
+    payload_json: 'jsonb',
+  },
+};
