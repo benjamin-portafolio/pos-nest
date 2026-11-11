@@ -4,11 +4,9 @@ import { execFile } from 'node:child_process';
 import { promisify } from 'node:util';
 import { readFileSync, writeFileSync } from 'node:fs';
 import { dirname, join } from 'node:path';
-import { randomUUID } from 'node:crypto';
 import { DataSource } from 'typeorm';
-import { RecoveryAuthorizationService } from '../../src/recovery/recovery-authorization.service';
 import { BaselineBootstrapService } from '../../src/recovery/baseline-bootstrap.service';
-import { canonical, sha256 } from '../../src/recovery/recovery-contract';
+import { isUuid } from '../../src/recovery/recovery-contract';
 
 export async function runRecoveryS6Rehearsal(
   db: DataSource,
@@ -25,24 +23,18 @@ export async function runRecoveryS6Rehearsal(
   const bridge = createServer(async (req, res) => {
     try {
       if (req.method !== 'POST') throw new Error('POST required');
-      if (req.url === '/grant') {
-        const prepared = JSON.parse(
-          readFileSync(join(root, 's6/prepared.json'), 'utf8'),
-        );
-        const manifest = JSON.parse(
-          readFileSync(join(prepared.package_path, 'manifest.json'), 'utf8'),
-        );
-        const token = await db.transaction((m) =>
-          new RecoveryAuthorizationService().grant(m, {
-            recovery_id: randomUUID(),
-            package_id: manifest.package_id,
-            manifest_digest: sha256(canonical(manifest)),
-            source_device_id: manifest.source.device_id,
-            issuer: 'S6-fixture-only',
-            recipient: 'A-UI',
-          }),
-        );
-        res.end(JSON.stringify({ token }));
+      const request = new URL(req.url, 'http://127.0.0.1');
+      if (request.pathname === '/approve') {
+        const id = request.searchParams.get('id');
+        if (!isUuid(id)) throw new Error('Invalid fixture request ID');
+        await promisify(execFile)(process.execPath, [
+          '-r',
+          'ts-node/register',
+          'src/recovery/recovery-admin.ts',
+          'approve',
+          id,
+        ]);
+        res.end('{}');
       } else if (req.url === '/enroll') {
         const grant = await db.transaction((m) =>
           BaselineBootstrapService.grant(

@@ -410,7 +410,10 @@ export class RecoveryValidationService {
         ')';
       const keys = RECOVERY_KEYS[table];
       const join = keys
-        .map((k) => `r."${k}"::text=s.row_data->>'${k}'`)
+        .map(
+          (k) =>
+            `r."${k}"=(s.row_data->>'${k}')::${RECOVERY_COLUMNS[table][k]}`,
+        )
         .join(' AND ');
       const [mismatch] = await m.query(
         `SELECT s.row_key FROM recovery_rows s LEFT JOIN "${table}" r ON ${join} WHERE s.recovery_id=$1 AND s.entity=$2 AND ${projection} IS DISTINCT FROM ${table === 'events' ? "s.row_data-'updated_at_server'" : 's.row_data'} LIMIT 1`,

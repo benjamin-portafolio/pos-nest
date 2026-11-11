@@ -9,6 +9,7 @@ import { randomUUID } from 'node:crypto';
 import { spawn, ChildProcess } from 'node:child_process';
 import { once } from 'node:events';
 import { CreateRecoveryProtocol1794096000000 } from '../migrations/1794096000000-CreateRecoveryProtocol';
+import { CreateConnectionAttempts1794355200000 } from '../migrations/1794355200000-CreateConnectionAttempts';
 import { CreateRecoveryDataset1794182400000 } from '../migrations/1794182400000-CreateRecoveryDataset';
 import { RecoveryAuthorizationService } from './recovery-authorization.service';
 import { BaselineBootstrapService } from './baseline-bootstrap.service';
@@ -219,6 +220,7 @@ integration(
       try {
         await new CreateRecoveryProtocol1794096000000().up(q);
         await new CreateRecoveryDataset1794182400000().up(q);
+        await new CreateConnectionAttempts1794355200000().up(q);
         await q.commitTransaction();
       } catch (e) {
         await q.rollbackTransaction();
@@ -251,7 +253,7 @@ integration(
         "UPDATE server_state SET mode='empty',generation_id=uuid_generate_v4(),active_recovery_id=null,dataset_id=null,baseline_high_watermark=0,recovery_enabled=true",
       );
       await db.query(
-        'TRUNCATE recovery_bootstrap_grants,recovery_dataset_chunks,recovery_datasets,recovery_rows,recovery_chunks,recovery_authorizations,recovery_audit,sync_bindings,recovery_sessions CASCADE',
+        'TRUNCATE recovery_bootstrap_grants,recovery_dataset_chunks,recovery_datasets,recovery_rows,recovery_chunks,recovery_authorizations,recovery_audit,sync_bindings,recovery_sessions,recovery_connection_requests CASCADE',
       );
       for (const table of BUSINESS_TABLES)
         await db.query(`TRUNCATE "${table}" CASCADE`);

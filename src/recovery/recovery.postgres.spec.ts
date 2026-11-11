@@ -1,3 +1,4 @@
+import { CreateConnectionAttempts1794355200000 } from '../migrations/1794355200000-CreateConnectionAttempts';
 import { CreateRecoveryDataset1794182400000 } from '../migrations/1794182400000-CreateRecoveryDataset';
 import 'reflect-metadata';
 import { randomBytes, randomUUID } from 'node:crypto';
@@ -221,6 +222,7 @@ integration(
       try {
         await migration.up(q);
         await new CreateRecoveryDataset1794182400000().up(q);
+        await new CreateConnectionAttempts1794355200000().up(q);
         await q.commitTransaction();
       } catch (e) {
         await q.rollbackTransaction();

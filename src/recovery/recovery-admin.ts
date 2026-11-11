@@ -1,3 +1,5 @@
+import { CreateConnectionAttempts1794355200000 } from '../migrations/1794355200000-CreateConnectionAttempts';
+import { isUuid } from './recovery-contract';
 import { BaselineBootstrapService } from './baseline-bootstrap.service';
 import { CreateRecoveryDataset1794182400000 } from '../migrations/1794182400000-CreateRecoveryDataset';
 /** Local-only operator tool. Never loads .env or accepts an HTTP request. */
@@ -20,10 +22,15 @@ async function main() {
       'grant',
       'bootstrap-grant',
       'status',
+      'requests',
+      'approve',
+      'reject',
+      'enrollment-enable',
+      'enrollment-disable',
     ].includes(command)
   )
     throw new Error(
-      'Usage: recovery-admin migrate|enable|disable|status OR grant|bootstrap-grant input.json secret-output.json',
+      'Usage: recovery-admin migrate|enable|disable|status|requests|enrollment-enable|enrollment-disable OR approve|reject request-id OR grant|bootstrap-grant input.json secret-output.json',
     );
   const db = await new DataSource({
     type: 'postgres',
@@ -37,6 +44,7 @@ async function main() {
     migrations: [
       CreateRecoveryProtocol1794096000000,
       CreateRecoveryDataset1794182400000,
+      CreateConnectionAttempts1794355200000,
     ],
   }).initialize();
   try {
@@ -51,6 +59,80 @@ async function main() {
         'SELECT * FROM server_state WHERE singleton FOR UPDATE',
       );
       if (command === 'status') return s;
+      if (command === 'requests') {
+        return m.query(
+          `SELECT request_id,server_instance_id,generation_id,package_id,manifest_digest,source_device_id,decision,created_at
+          FROM recovery_connection_requests WHERE server_instance_id=$1 AND generation_id=$2 ORDER BY created_at DESC`,
+          [s.server_instance_id, s.generation_id],
+        );
+      }
+      if (command === 'enrollment-enable' || command === 'enrollment-disable') {
+        const enabled = command === 'enrollment-enable';
+        await m.query(
+          'UPDATE server_state SET automatic_enrollment=$1 WHERE singleton',
+          [enabled],
+        );
+        await m.query(
+          'INSERT INTO recovery_audit(action,details) VALUES($1,$2)',
+          [command, { automatic_enrollment: enabled }],
+        );
+        return { automatic_enrollment: enabled };
+      }
+      if (command === 'approve' || command === 'reject') {
+        if (!isUuid(inputFile)) throw new Error('Expected request UUID');
+        const approving = command === 'approve';
+        if (
+          approving &&
+          (!s.recovery_enabled ||
+            s.dataset_id ||
+            (s.active_recovery_id && s.active_recovery_id !== inputFile))
+        ) {
+          throw new Error('Destination unavailable for approval');
+        }
+        const decision = approving ? 'approved' : 'rejected';
+        const [request] = await m.query(
+          `UPDATE recovery_connection_requests SET decision=$1
+          WHERE request_id=$2 AND server_instance_id=$3 AND generation_id=$4
+          AND (decision <> 'rejected' OR NOT $5)
+          RETURNING package_id,manifest_digest,source_device_id`,
+          [
+            decision,
+            inputFile,
+            s.server_instance_id,
+            s.generation_id,
+            approving,
+          ],
+        );
+        if (!request) throw new Error('Request unavailable in this generation');
+        if (approving) {
+          await m.query(
+            "UPDATE recovery_authorizations SET revoked=false WHERE recovery_id=$1 AND issuer='connection-approval' AND server_instance_id=$2 AND generation_id=$3",
+            [inputFile, s.server_instance_id, s.generation_id],
+          );
+        } else {
+          await m.query(
+            'UPDATE recovery_authorizations SET revoked=true WHERE recovery_id=$1',
+            [inputFile],
+          );
+          await m.query(
+            "UPDATE recovery_bootstrap_grants SET revoked=true WHERE issuer='connection-source' AND recipient=$1",
+            [inputFile],
+          );
+        }
+        await m.query(
+          'INSERT INTO recovery_audit(recovery_id,action,details) VALUES($1,$2,$3)',
+          [
+            inputFile,
+            command,
+            {
+              ...request,
+              issuer:
+                process.env.USER ?? process.env.USERNAME ?? 'local-operator',
+            },
+          ],
+        );
+        return { request_id: inputFile, decision };
+      }
       if (command === 'enable' || command === 'disable') {
         if (command === 'enable' && s.dataset_id)
           throw new Error('Published dataset cannot be recovered again');
@@ -58,8 +140,13 @@ async function main() {
           'UPDATE server_state SET recovery_enabled=$1,revision=revision+1 WHERE singleton',
           [command === 'enable'],
         );
-        if (command === 'disable')
-          await m.query('UPDATE recovery_authorizations SET revoked=true');
+        if (command === 'disable') {
+          await m.query(`UPDATE recovery_connection_requests SET decision='pending'
+            WHERE decision='approved' AND request_id NOT IN (SELECT recovery_id FROM recovery_sessions WHERE state='completed')`);
+          await m.query(`UPDATE recovery_authorizations SET revoked=true
+            WHERE issuer <> 'connection-approval' OR recovery_id NOT IN
+              (SELECT recovery_id FROM recovery_sessions WHERE state='completed')`);
+        }
         await m.query(
           'INSERT INTO recovery_audit(action,details) VALUES($1,$2)',
           [command, { issuer: process.env.USER ?? 'local-operator' }],

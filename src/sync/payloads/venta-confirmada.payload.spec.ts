@@ -1,7 +1,7 @@
 import { randomUUID } from 'crypto';
 import { VentaConfirmadaPayload } from './venta-confirmada.payload';
 
-function legacy(): Record<string, unknown> {
+function legacy() {
   const config = randomUUID();
   return {
     payment_id: randomUUID(),
@@ -38,6 +38,42 @@ function legacy(): Record<string, unknown> {
   };
 }
 describe('VentaConfirmadaPayload transfer', () => {
+  it('conserva cero canónico cuando un consumo de receta redondea a cero', () => {
+    const sale = legacy();
+    const [line] = sale.lines;
+    const payload = VentaConfirmadaPayload.fromJson({
+      ...sale,
+      lines: [
+        {
+          ...line,
+          consumption_mode: 'recipe',
+          sale_unit_id: randomUUID(),
+          consumptions: [
+            {
+              inventory_item_id: randomUUID(),
+              component_atomic: 1,
+              quantity_delta_atomic: 0,
+              movement_type: 'sale_consumption',
+              total_cost_minor: null,
+              movement_id: null,
+            },
+          ],
+          snapshot: {
+            ...line.snapshot,
+            sale_mode_snapshot: 'measured',
+            quantity: null,
+            measured_quantity_atomic: 1,
+            unit_price_minor: 1000000,
+            price_reference_quantity_atomic_snapshot: 100,
+            sale_unit_code_snapshot: 'g',
+            sale_unit_symbol_snapshot: 'g',
+            sale_unit_atomic_factor_snapshot: 1,
+          },
+        },
+      ],
+    });
+    expect(payload.lines[0].consumptions[0].quantity_delta_atomic).toBe(0);
+  });
   it('lee efectivo legado sin referencia y conserva cambio', () => {
     const p = VentaConfirmadaPayload.fromJson(legacy());
     expect(p.paymentMethod).toBe('cash');

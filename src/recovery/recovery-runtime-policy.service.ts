@@ -28,8 +28,15 @@ export class RecoveryRuntimePolicyService implements OnModuleInit {
       throw new Error(
         'Recovery dataset migration missing; apply explicitly before starting',
       );
+    const [connectionSchema] = await this.db.query(
+      "SELECT to_regclass('recovery_connection_requests') IS NOT NULL AS installed",
+    );
+    if (!connectionSchema.installed)
+      throw new Error(
+        'Connection request migration missing; apply explicitly before starting',
+      );
     const [state] = await this.db.query(
-      'SELECT singleton FROM server_state WHERE singleton',
+      'SELECT singleton, automatic_enrollment FROM server_state WHERE singleton',
     );
     if (!state)
       throw new Error(

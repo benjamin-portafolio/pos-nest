@@ -1,3 +1,7 @@
+import { AlignOfferPricingComment1794268800000 } from './migrations/1794268800000-AlignOfferPricingComment';
+import { CreateConnectionAttempts1794355200000 } from './migrations/1794355200000-CreateConnectionAttempts';
+import { ConnectionAttemptController } from './recovery/connection-attempt.controller';
+import { ConnectionAttemptService } from './recovery/connection-attempt.service';
 import { BaselineBootstrapService } from './recovery/baseline-bootstrap.service';
 import { BaselineBootstrapController } from './recovery/baseline-bootstrap.controller';
 import { RecoveryStagingService } from './recovery/recovery-staging.service';
@@ -100,6 +104,8 @@ import { FinancialReportController } from './reports/financial-report.controller
         migrations: [
           CreateRecoveryProtocol1794096000000,
           CreateRecoveryDataset1794182400000,
+          CreateConnectionAttempts1794355200000,
+          AlignOfferPricingComment1794268800000,
           AddOfferPricing1793404800000,
           AddVariantMinimumStock1792368000000,
           CreateSaleAdjustments1793145600000,
@@ -148,6 +154,7 @@ import { FinancialReportController } from './reports/financial-report.controller
   ],
   controllers: [
     RecoveryController,
+    ConnectionAttemptController,
     BaselineBootstrapController,
     AppController,
     SyncController,
@@ -156,6 +163,7 @@ import { FinancialReportController } from './reports/financial-report.controller
   ],
   providers: [
     RecoveryRuntimePolicyService,
+    ConnectionAttemptService,
     RecoverySessionService,
     RecoveryStagingService,
     BaselineBootstrapService,

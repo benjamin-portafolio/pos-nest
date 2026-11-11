@@ -200,7 +200,7 @@ function parseLine(value: unknown): ConfirmedSaleLine {
         'inventory_item_id',
       ),
       component_atomic: component,
-      quantity_delta_atomic: -expected,
+      quantity_delta_atomic: expected === 0 ? 0 : -expected,
       movement_id:
         expected === 0 ? null : requiredUuidV4(c.movement_id, 'movement_id'),
       movement_type: 'sale_consumption',

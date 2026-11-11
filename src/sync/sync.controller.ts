@@ -41,7 +41,9 @@ export class SyncController {
         ...health.capabilities,
         'recovery_transport_v1',
         'sync_identity_v2',
-        'baseline_bootstrap_required',
+        ...(state.baseline_bootstrap_required
+          ? ['baseline_bootstrap_required']
+          : []),
       ],
       latest_server_sequence: Math.max(
         health.latest_server_sequence,

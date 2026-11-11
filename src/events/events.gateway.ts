@@ -36,6 +36,7 @@ export class EventsGateway implements OnGatewayConnection {
             device: a.device_id,
           };
           await client.join('generation:' + s.generation_id);
+          if (!b) return;
           let timer: ReturnType<typeof setTimeout> | undefined;
           const expiresAt = new Date(b.expires_at).getTime();
           const checkExpiry = () => {

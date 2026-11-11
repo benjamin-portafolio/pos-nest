@@ -68,6 +68,9 @@ export class BaselineBootstrapService {
       if (
         !g ||
         g.revoked ||
+        (g.issuer === 'connection-automatic' &&
+          g.recipient === 'empty-installation' &&
+          !s.automatic_enrollment) ||
         new Date(g.expires_at).getTime() <= Date.now() ||
         g.server_instance_id !== s.server_instance_id ||
         g.generation_id !== s.generation_id ||

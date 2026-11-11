@@ -11,6 +11,13 @@ import {
 import { RECOVERY_COLUMNS, RECOVERY_KEYS } from './recovery-logical-schema';
 import { recoveryError } from './recovery-errors';
 
+const recognizedSourceV10Fingerprints = new Set([
+  // Instalación creada con el esquema actual.
+  'c5a129e2d98ad16a28983fe6b97e2d3e5facbce09e474e8cccc39693fc021254',
+  // Instalación v8 reconocida, migrada por Flutter hasta v10.
+  'ef3bd9c5f9c5388a4d620126231bf49dffa81f86967923df312d001196b911c9',
+]);
+
 /** Reads one transport chunk at a time; typed rows stay private and durable in PG. */
 @Injectable()
 export class RecoveryStagingService {
@@ -25,8 +32,7 @@ export class RecoveryStagingService {
     // Exact physical signature produced and verified by S3, rather than accepting any version integer.
     if (
       manifest.source.schema_version !== 10 ||
-      manifest.source.schema_fingerprint !==
-        'c5a129e2d98ad16a28983fe6b97e2d3e5facbce09e474e8cccc39693fc021254'
+      !recognizedSourceV10Fingerprints.has(manifest.source.schema_fingerprint)
     )
       recoveryError(412, 'incompatible_source_schema');
     const [count] = await m.query(

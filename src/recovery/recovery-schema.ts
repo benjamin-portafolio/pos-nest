@@ -39,7 +39,10 @@ export const TECHNICAL_TABLES = [
   'recovery_datasets',
   'recovery_dataset_chunks',
   'recovery_bootstrap_grants',
+  'recovery_connection_requests',
   'migrations',
+  'pos_deployment_state',
+  'pos_deployment_migrations',
   'server_state',
   'recovery_sessions',
   'recovery_chunks',
@@ -88,6 +91,8 @@ export const ADMITTED_MIGRATIONS = [
   'AddOfferPricing1793404800000',
   'CreateRecoveryProtocol1794096000000',
   'CreateRecoveryDataset1794182400000',
+  'AlignOfferPricingComment1794268800000',
+  'CreateConnectionAttempts1794355200000',
 ];
 
 /** Transport only: unavailable remote conflict history cannot be recreated from local rows.

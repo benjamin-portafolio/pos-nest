@@ -24,6 +24,7 @@ export class ServerStateService {
       sync_protocol: 2,
       baseline_high_watermark: String(s.baseline_high_watermark),
       recovery_enabled: s.recovery_enabled,
+      baseline_bootstrap_required: s.mode === 'active' && !!s.dataset_id,
       validation_available: true,
       publication_available: true,
       commercial_recovery_complete: true,
@@ -38,6 +39,20 @@ export class ServerStateService {
         'SELECT * FROM server_state WHERE singleton FOR SHARE',
       );
       if (!s) recoveryError(412, 'incompatible_schema');
+      // A normal server without an imported baseline retains the legacy sync
+      // contract. Hold the same lock so an enabled recovery cannot race a pull.
+      if (
+        !s.dataset_id &&
+        !s.recovery_enabled &&
+        s.mode !== 'recovering' &&
+        !a.protocol &&
+        !a.server &&
+        !a.generation &&
+        !a.token &&
+        !a.device
+      ) {
+        return fn(s, null, m);
+      }
       if (a.protocol !== '2' || !a.server || !a.generation)
         recoveryError(426, 'client_upgrade_required');
       if (s.server_instance_id !== a.server || s.generation_id !== a.generation)

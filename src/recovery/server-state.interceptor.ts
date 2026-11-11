@@ -40,6 +40,7 @@ export class ServerStateInterceptor implements NestInterceptor {
           device: h['x-pos-device'],
         },
         async (s, b, m) => {
+          if (!b) return lastValueFrom(next.handle());
           if (
             req.body?.device_id !== undefined &&
             req.body.device_id !== b.device_id
