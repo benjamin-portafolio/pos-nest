@@ -9,6 +9,21 @@ El analisis general del sistema se encuentra en:
 
 Nota: el nombre del directorio `analisis ` incluye un espacio final.
 
+## Diagrama ER obligatorio con cambios de base de datos
+
+- Al cambiar entidades, tablas, columnas, tipos, nulabilidad, PK/FK, restricciones,
+  indices, triggers relevantes o migraciones, actualizar en la misma tarea el
+  archivo `05 - Datos/Diagrama ER actual.md` del vault indicado arriba.
+- Seguir `tools/er/README.md` de ese vault: consultar metadatos con
+  `tools/er/postgresql.sql`, renovar la captura, actualizar notas, regenerar el ER
+  y ejecutar su comprobacion `--check`.
+- Revisar entidades y migraciones ademas del catalogo. Distinguir cambios de
+  codigo pendientes de lo instalado. Si no hay conexion, conservar la captura
+  acreditada y documentar el cambio pendiente; no ejecutar migraciones solo para
+  generar documentacion. Respetar las diferencias con SQLite y las reglas por modo.
+- No cerrar un cambio de esquema sin actualizar el ER. Cambios de filas sin
+  cambios estructurales no requieren actualizarlo.
+
 ## Comunicacion con el usuario
 
 - Cuando existan dudas, decisiones pendientes o solicitudes de confirmacion,
