@@ -18,6 +18,13 @@ const recognizedSourceV10Fingerprints = new Set([
   'ef3bd9c5f9c5388a4d620126231bf49dffa81f86967923df312d001196b911c9',
 ]);
 
+// S1 pedidos: firmas completas acreditadas por supplier_order_schema_test.dart.
+const recognizedSourceV11Fingerprints = new Set([
+  '22b3497e2ff19dd0cc02e2dc928bb03d4a0ea755a0cb76ab18dffc3fc15a1c26',
+  'e0f1a917e9a921777dc3026d6e200fc32238376ddcc2f95f26ac3801dd289ca8',
+  'ff1119d4d3c32ceb53f0ac5914e4fcce5bd528e20e528bf23d7aa025f3d92ebd',
+]);
+
 /** Reads one transport chunk at a time; typed rows stay private and durable in PG. */
 @Injectable()
 export class RecoveryStagingService {
@@ -31,8 +38,16 @@ export class RecoveryStagingService {
       recoveryError(422, 'sequence_exhausted');
     // Exact physical signature produced and verified by S3, rather than accepting any version integer.
     if (
-      manifest.source.schema_version !== 10 ||
-      !recognizedSourceV10Fingerprints.has(manifest.source.schema_fingerprint)
+      !(
+        (manifest.source.schema_version === 10 &&
+          recognizedSourceV10Fingerprints.has(
+            manifest.source.schema_fingerprint,
+          )) ||
+        (manifest.source.schema_version === 11 &&
+          recognizedSourceV11Fingerprints.has(
+            manifest.source.schema_fingerprint,
+          ))
+      )
     )
       recoveryError(412, 'incompatible_source_schema');
     const [count] = await m.query(
@@ -124,10 +139,28 @@ export class RecoveryStagingService {
         recoveryError(422, 'invalid_sale_metadata');
       return;
     }
-    this.fields(entity, row, Object.keys(columns));
+    const legacyReplenishment =
+      entity === 'product_variants' &&
+      !Object.hasOwn(row, 'current_supplier_id') &&
+      !Object.hasOwn(row, 'target_stock_atomic');
+    this.fields(
+      entity,
+      row,
+      Object.keys(columns).filter(
+        (k) =>
+          !legacyReplenishment ||
+          !['current_supplier_id', 'target_stock_atomic'].includes(k),
+      ),
+    );
     for (const [key, type] of Object.entries(columns)) {
       const v = row[key];
-      if (v === null) continue; // Nullability is enforced by actual PG constraints, not a guessed DTO default.
+      if (
+        v === null ||
+        (legacyReplenishment &&
+          v === undefined &&
+          ['current_supplier_id', 'target_stock_atomic'].includes(key))
+      )
+        continue; // Nullability is enforced by actual PG constraints, not a guessed DTO default.
       let valid = false;
       switch (type) {
         case 'uuid':

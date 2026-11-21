@@ -1,3 +1,8 @@
+import { CreateSupplierOrders1795046400000 } from './migrations/1795046400000-CreateSupplierOrders';
+import { SupplierOrderEntity } from './entities/supplier-order.entity';
+import { SupplierOrderItemEntity } from './entities/supplier-order-item.entity';
+import { SupplierReceiptEntity } from './entities/supplier-receipt.entity';
+import { SupplierReceiptItemEntity } from './entities/supplier-receipt-item.entity';
 import { AlignOfferPricingComment1794268800000 } from './migrations/1794268800000-AlignOfferPricingComment';
 import { CreateConnectionAttempts1794355200000 } from './migrations/1794355200000-CreateConnectionAttempts';
 import { ConnectionAttemptController } from './recovery/connection-attempt.controller';
@@ -30,6 +35,7 @@ import { CreateSaleAdjustments1793145600000 } from './migrations/1793145600000-C
 import { AddVariantMinimumStock1792368000000 } from './migrations/1792368000000-AddVariantMinimumStock';
 import { SupplierEntity } from './entities/supplier.entity';
 import { VariantSupplierEntity } from './entities/variant-supplier.entity';
+import { SupplierOrderEventHandler } from './sync/supplier-order-event.handler';
 import { ProveedorEventHandler } from './sync/proveedor-event.handler';
 import { CollectionsReportService } from './reports/collections-report.service';
 import { CollectionsReportController } from './reports/collections-report.controller';
@@ -102,6 +108,7 @@ import { FinancialReportController } from './reports/financial-report.controller
         synchronize: false,
         // Registro para ejecución explícita; nunca ejecutar migraciones al arrancar.
         migrations: [
+          CreateSupplierOrders1795046400000,
           CreateRecoveryProtocol1794096000000,
           CreateRecoveryDataset1794182400000,
           CreateConnectionAttempts1794355200000,
@@ -114,6 +121,11 @@ import { FinancialReportController } from './reports/financial-report.controller
         ],
         migrationsRun: false,
         entities: [
+          SupplierOrderEntity,
+          SupplierOrderItemEntity,
+          SupplierReceiptEntity,
+          SupplierReceiptItemEntity,
+
           SaleReconciliationCreditAllocationEntity,
           SaleReconciliationEffectEntity,
           SaleAdjustmentEntity,
@@ -182,6 +194,7 @@ import { FinancialReportController } from './reports/financial-report.controller
     AbonoClienteEventHandler,
     ClienteEventHandler,
     ProveedorEventHandler,
+    SupplierOrderEventHandler,
     VentaEventHandler,
     FinancialCategoryEventHandler,
     FinancialEntryEventHandler,

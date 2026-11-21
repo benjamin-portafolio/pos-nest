@@ -224,6 +224,11 @@ export class ProductoEventHandler {
               ? null
               : Number(variant.standardCostMinor),
           inventoryItemId: variant.inventoryItemId,
+          currentSupplierId: variant.currentSupplierId,
+          targetStockAtomic:
+            variant.targetStockAtomic == null
+              ? null
+              : Number(variant.targetStockAtomic),
           minimumStockAtomic: knowsMinimumStock
             ? variant.minimumStockAtomic == null
               ? null
@@ -315,6 +320,47 @@ export class ProductoEventHandler {
         where: { id: variant.id },
         lock: { mode: 'pessimistic_write' },
       });
+      if (
+        variant.targetStockAtomic != null &&
+        variant.inventoryItemId == null &&
+        String(variant.targetStockAtomic) !== existingVariant?.targetStockAtomic
+      ) {
+        return this.saveRejectedEvent(
+          manager,
+          event,
+          'Cambiar el objetivo requiere seguimiento directo.',
+        );
+      }
+      if (variant.currentSupplierId != null) {
+        const selected = await manager.findOneBy(SupplierEntity, {
+          id: variant.currentSupplierId,
+        });
+        if (
+          !selected ||
+          (!selected.active &&
+            existingVariant?.currentSupplierId !== variant.currentSupplierId)
+        )
+          return this.saveRejectedEvent(
+            manager,
+            event,
+            'El proveedor actual no está disponible.',
+          );
+        const hasPair =
+          variant.suppliers == null
+            ? await manager.existsBy(VariantSupplierEntity, {
+                variantId: variant.id,
+                supplierId: variant.currentSupplierId,
+              })
+            : variant.suppliers.some(
+                (s) => s.supplierId === variant.currentSupplierId,
+              );
+        if (!hasPair)
+          return this.saveRejectedEvent(
+            manager,
+            event,
+            'El proveedor actual requiere una relación cotizada.',
+          );
+      }
       if (
         existingVariant &&
         ((!update && existingVariant.createdEventId !== event.event_id) ||
@@ -783,9 +829,36 @@ export class ProductoEventHandler {
       }
     }
 
+    // Retirada explícita previa permite reemplazar la pareja dentro de la transacción.
+    for (const variant of payload.variants) {
+      if (variant.currentSupplierId !== undefined)
+        await manager.update(
+          ProductVariantEntity,
+          { id: variant.id },
+          { currentSupplierId: null },
+        );
+    }
     // Solo conjuntos explícitos reemplazan relaciones. La omisión legada nunca retira.
     for (const variant of payload.variants) {
       if (variant.suppliers == null) continue;
+      const selected = await manager.findOneByOrFail(ProductVariantEntity, {
+        id: variant.id,
+      });
+      if (
+        selected.currentSupplierId !== null &&
+        !variant.suppliers.some(
+          (s) => s.supplierId === selected.currentSupplierId,
+        )
+      ) {
+        throw new Error('Retire o sustituya primero el proveedor actual');
+      }
+      if (selected.currentSupplierId !== null) {
+        await manager.update(
+          ProductVariantEntity,
+          { id: variant.id },
+          { currentSupplierId: null },
+        );
+      }
       await manager.delete(VariantSupplierEntity, { variantId: variant.id });
       if (variant.suppliers.length > 0)
         await manager.insert(
@@ -797,8 +870,30 @@ export class ProductoEventHandler {
             quotedAtMs: String(supplier.quotedAtMs),
           })),
         );
+      if (selected.currentSupplierId !== null) {
+        await manager.update(
+          ProductVariantEntity,
+          { id: variant.id },
+          { currentSupplierId: selected.currentSupplierId },
+        );
+      }
     }
 
+    for (const variant of payload.variants) {
+      const patch: {
+        currentSupplierId?: string | null;
+        targetStockAtomic?: string | null;
+      } = {};
+      if (variant.currentSupplierId !== undefined)
+        patch.currentSupplierId = variant.currentSupplierId;
+      if (variant.targetStockAtomic !== undefined)
+        patch.targetStockAtomic =
+          variant.targetStockAtomic == null
+            ? null
+            : String(variant.targetStockAtomic);
+      if (Object.keys(patch).length)
+        await manager.update(ProductVariantEntity, { id: variant.id }, patch);
+    }
     await this.maintainVariantInventoryMemory(
       manager,
       event,

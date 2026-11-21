@@ -20,6 +20,19 @@ export class ProductoActualizadoPayload {
       throw new Error(
         'La edición debe conocer minimum_stock_atomic en before y after, o conservar ambos estados legados.',
       );
+    for (const v of before.variants) {
+      const next = after.variants.find((a) => a.id === v.id);
+      if (
+        next &&
+        ((v.currentSupplierId === undefined &&
+          next.currentSupplierId !== undefined) ||
+          (v.targetStockAtomic === undefined &&
+            next.targetStockAtomic !== undefined))
+      )
+        throw new Error(
+          'Establecer reposición requiere el valor anterior explícito.',
+        );
+    }
     if (
       JSON.stringify(before.saleConfiguration) !==
       JSON.stringify(after.saleConfiguration)
@@ -60,6 +73,7 @@ export class ProductoActualizadoPayload {
   static sameState(
     a: ProductoCreadoPayload,
     b: ProductoCreadoPayload,
+    editingBase = false,
   ): boolean {
     if (
       a.name !== b.name ||
@@ -81,6 +95,16 @@ export class ProductoActualizadoPayload {
         v.standardCostMinor === other.standardCostMinor &&
         v.inventoryItemId === other.inventoryItemId &&
         (v.minimumStockAtomic ?? null) === (other.minimumStockAtomic ?? null) &&
+        ((editingBase &&
+          (v.currentSupplierId === undefined ||
+            other.currentSupplierId === undefined)) ||
+          (v.currentSupplierId ?? null) ===
+            (other.currentSupplierId ?? null)) &&
+        ((editingBase &&
+          (v.targetStockAtomic === undefined ||
+            other.targetStockAtomic === undefined)) ||
+          (v.targetStockAtomic ?? null) ===
+            (other.targetStockAtomic ?? null)) &&
         v.sortOrder === other.sortOrder &&
         ProductoProveedorPrecio.sameList(v.suppliers, other.suppliers) &&
         v.recipeComponents.length === other.recipeComponents.length &&
@@ -110,10 +134,10 @@ export class ProductoActualizadoPayload {
         ? current.withKnownMinimumStock()
         : current;
     return (
-      this.sameState(normalized, before) ||
+      this.sameState(normalized, before, true) ||
       (!normalized.knowsSuppliers &&
         before.knowsSuppliers &&
-        this.sameState(normalized.withKnownSuppliers(), before))
+        this.sameState(normalized.withKnownSuppliers(), before, true))
     );
   }
   get dependencyEventIds(): ReadonlySet<string> {

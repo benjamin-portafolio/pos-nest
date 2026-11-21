@@ -1,3 +1,4 @@
+import { SupplierReplenishmentPatch } from './supplier-replenishment-patch';
 import { ProductoProveedorPrecio } from './producto-proveedor-precio';
 import { ProductoProveedorDependencia } from './producto-proveedor-dependencia';
 import { SaleMode } from '../../enums/sale-mode.enum';
@@ -26,6 +27,8 @@ export interface ProductoCreadoVariantValue {
   inventoryItemId: string | null;
   /** undefined: legado ausente; null: aviso desactivado conocido; número: átomos. */
   minimumStockAtomic?: number | null;
+  currentSupplierId?: string | null;
+  targetStockAtomic?: number | null;
   recipeComponents: readonly ProductoCreadoRecipeComponentValue[];
   sortOrder: number;
   /** null/ausente es desconocimiento legado; [] es conjunto conocido vacío. */
@@ -71,7 +74,20 @@ export class ProductoCreadoPayload {
             : ProductoProveedorPrecio.parseVariant({
                 suppliers: v.suppliers.map((s) => s.toJson()),
               });
-        return Object.freeze({ ...v, suppliers });
+        const patch = SupplierReplenishmentPatch.fromJson({
+          ...(v.currentSupplierId === undefined
+            ? {}
+            : { current_supplier_id: v.currentSupplierId }),
+          ...(v.targetStockAtomic === undefined
+            ? {}
+            : { target_stock_atomic: v.targetStockAtomic }),
+        });
+        return Object.freeze({
+          ...v,
+          suppliers,
+          currentSupplierId: patch.hasSupplier ? patch.supplierId : undefined,
+          targetStockAtomic: patch.hasTarget ? patch.targetAtomic : undefined,
+        });
       }),
     );
     this.supplierDependencies = ProductoProveedorDependencia.validate(
@@ -321,6 +337,12 @@ export class ProductoCreadoPayload {
           ? {}
           : { offer_price_minor: variant.offerPriceMinor }),
         standard_cost_minor: variant.standardCostMinor,
+        ...(variant.currentSupplierId === undefined
+          ? {}
+          : { current_supplier_id: variant.currentSupplierId }),
+        ...(variant.targetStockAtomic === undefined
+          ? {}
+          : { target_stock_atomic: variant.targetStockAtomic }),
         ...(variant.minimumStockAtomic === undefined
           ? {}
           : { minimum_stock_atomic: variant.minimumStockAtomic }),
@@ -383,6 +405,7 @@ function parseVariant(
 ): ProductoCreadoVariantValue {
   const fieldName = `variants[${index}]`;
   const variant = requiredRecord(value, fieldName);
+  const replenishment = SupplierReplenishmentPatch.fromJson(variant);
   if (variant.sku !== null && variant.sku !== undefined) {
     throw new Error(`${fieldName}.sku debe ser null.`);
   }
@@ -443,6 +466,12 @@ function parseVariant(
             variant.minimum_stock_atomic,
             `${fieldName}.minimum_stock_atomic`,
           )
+      : undefined,
+    currentSupplierId: replenishment.hasSupplier
+      ? replenishment.supplierId
+      : undefined,
+    targetStockAtomic: replenishment.hasTarget
+      ? replenishment.targetAtomic
       : undefined,
     recipeComponents,
     suppliers: ProductoProveedorPrecio.parseVariant(variant),

@@ -50,7 +50,11 @@ describe('SyncService', () => {
 
       expect(response).toEqual({
         status: 'ok',
-        capabilities: ['offer_pricing_v2', 'product_suppliers_v1'],
+        capabilities: [
+          'offer_pricing_v2',
+          'product_suppliers_v1',
+          'supplier_replenishment_v1',
+        ],
         latest_server_sequence: 12,
         server_time: response.server_time,
       });

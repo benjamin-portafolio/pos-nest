@@ -1,5 +1,7 @@
+import { VariantSupplierEntity } from './variant-supplier.entity';
 import {
   Check,
+  ForeignKey,
   Column,
   Entity,
   Index,
@@ -50,6 +52,16 @@ import { SyncProjectionEntity } from './sync-projection.entity';
 @Check(
   'ck_product_variants_offer_price',
   '"offer_price_minor" IS NULL OR ("offer_price_minor" BETWEEN 1 AND 9007199254740991 AND "offer_price_minor" <= "sale_price_minor")',
+)
+@Check(
+  'ck_product_variants_target_stock',
+  'target_stock_atomic IS NULL OR target_stock_atomic BETWEEN 0 AND 9007199254740991',
+)
+@ForeignKey(
+  () => VariantSupplierEntity,
+  ['id', 'currentSupplierId'],
+  ['variantId', 'supplierId'],
+  { name: 'fk_current_supplier_pair', deferrable: 'INITIALLY DEFERRED' },
 )
 export class ProductVariantEntity extends SyncProjectionEntity {
   @PrimaryColumn('uuid', {
@@ -144,6 +156,13 @@ export class ProductVariantEntity extends SyncProjectionEntity {
   })
   @JoinColumn({ name: 'inventory_item_id' })
   inventoryItem: InventoryItemEntity | null;
+
+  /** Reposición; pertenencia acreditada por triggers simétricos de la migración. */
+  @Column('uuid', { name: 'current_supplier_id', nullable: true })
+  currentSupplierId: string | null;
+
+  @Column('bigint', { name: 'target_stock_atomic', nullable: true })
+  targetStockAtomic: string | null;
 
   @Column({
     name: 'sort_order',

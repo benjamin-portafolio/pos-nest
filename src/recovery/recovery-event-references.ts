@@ -1,3 +1,5 @@
+import { SupplierReceiptConfirmedPayload } from '../sync/payloads/supplier-receipt-confirmed-payload';
+import { SupplierOrderDraftSavedPayload } from '../sync/payloads/supplier-order-draft-saved-payload';
 import { VentaConfirmadaPayload } from '../sync/payloads/venta-confirmada.payload';
 import { VentaAnuladaPayload } from '../sync/payloads/venta-anulada.payload';
 import { DevolucionVentaRegistradaPayload } from '../sync/payloads/devolucion-venta-registrada.payload';
@@ -29,10 +31,12 @@ import { MovimientoInventarioRegistradoPayload } from '../sync/payloads/movimien
 export function recoveryEventReferences(
   e: any,
   context: {
+    supplierOrderRefs?: any[];
     deletedVariants?: any[];
     originalSale?: VentaConfirmadaPayload;
   } = {},
 ) {
+  const orderRefs = context.supplierOrderRefs ?? [];
   const deletedVariants = context.deletedVariants ?? [];
   const refs = [
     {
@@ -237,6 +241,7 @@ export function recoveryEventReferences(
       add('cash_movement', cash.cash.movementId);
     }
   }
+  refs.push(...orderRefs);
   return [...new Map(refs.map((r) => [canonical(r), r])).values()].map((r) => ({
     ...r,
     event_ref_id: recoveryReferenceId([
@@ -265,9 +270,71 @@ export function recoveryReferenceId(values: string[]) {
 
 export async function recoveryReferenceContext(m: EntityManager, e: any) {
   const result: {
+    supplierOrderRefs?: any[];
     deletedVariants?: any[];
     originalSale?: VentaConfirmadaPayload;
   } = {};
+  if (e.aggregate_type === 'supplier_order') {
+    const refs: any[] = [];
+    const add = (ref_type: string, ref_id: string) =>
+      refs.push({ ref_type, ref_id, relationship: 'uses' });
+    if (
+      [
+        'supplier_order_cancelled',
+        'supplier_order_closed',
+        'supplier_receipt_confirmed',
+      ].includes(e.event_type)
+    ) {
+      const [o] = await m.query(
+        'SELECT supplier_id FROM supplier_orders WHERE id=$1',
+        [e.aggregate_id],
+      );
+      if (o) add('supplier', o.supplier_id);
+      if (e.event_type === 'supplier_receipt_confirmed') {
+        const p = SupplierReceiptConfirmedPayload.fromJson(e.payload);
+        refs.push({
+          ref_type: 'supplier_receipt',
+          ref_id: p.receiptId,
+          relationship: 'affects',
+        });
+        for (const line of p.items) {
+          const [l] = await m.query(
+            'SELECT l.*,v.product_id FROM supplier_order_items l JOIN product_variants v ON v.variant_id=l.variant_id WHERE l.id=$1 AND l.order_id=$2',
+            [line.orderItemId, p.orderId],
+          );
+          if (l) {
+            add('product', l.product_id);
+            add('product_variant', l.variant_id);
+            add('unit', l.unit_id);
+            refs.push({
+              ref_type: 'inventory_item',
+              ref_id: l.inventory_item_id,
+              relationship: 'affects',
+            });
+          }
+          refs.push({
+            ref_type: 'inventory_movement',
+            ref_id: line.movementId,
+            relationship: 'affects',
+          });
+        }
+      }
+    } else {
+      const p = SupplierOrderDraftSavedPayload.fromJson(e.payload);
+      add('supplier', p.supplierId);
+      for (const line of p.items) {
+        const [v] = await m.query(
+          'SELECT product_id FROM product_variants WHERE variant_id=$1',
+          [line.variantId],
+        );
+        if (v) add('product', v.product_id);
+        add('product_variant', line.variantId);
+        add('inventory_item', line.inventoryItemId);
+        add('unit', line.unitId);
+      }
+    }
+    result.supplierOrderRefs = refs;
+  }
   if (
     [
       VentaAnuladaPayload.eventType,

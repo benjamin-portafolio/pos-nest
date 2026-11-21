@@ -243,6 +243,7 @@ export async function validateRecoveryInventory(m: EntityManager) {
     SELECT v.movement_id FROM inventory_movements v LEFT JOIN events e ON e.event_id=v.event_id
     WHERE e.sync_status IS DISTINCT FROM 'synced' OR NOT (
       (e.aggregate_type='inventory_item' AND e.aggregate_id=v.inventory_item_id AND v.movement_id::text=coalesce(e.payload->'initial_movement'->>'movement_id',e.payload->'movement'->>'movement_id'))
+      OR (e.event_type='supplier_receipt_confirmed' AND EXISTS(SELECT 1 FROM jsonb_array_elements(e.payload->'items') l WHERE l->>'movement_id'=v.movement_id::text))
       OR (e.event_type='venta_confirmada' AND EXISTS(SELECT 1 FROM jsonb_array_elements(e.payload->'lines') l CROSS JOIN LATERAL jsonb_array_elements(l->'consumptions') c WHERE c->>'movement_id'=v.movement_id::text))
       OR (e.event_type IN ('venta_anulada','devolucion_venta_registrada') AND EXISTS(SELECT 1 FROM jsonb_array_elements(e.payload->'lines') l CROSS JOIN LATERAL jsonb_array_elements(l->'stock') c WHERE c->>'movement_id'=v.movement_id::text))
     ) LIMIT 1`);

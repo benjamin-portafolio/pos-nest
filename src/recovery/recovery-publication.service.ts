@@ -39,6 +39,8 @@ export class RecoveryPublicationService {
       'recipe_components',
       'variant_suppliers',
       'variant_inventory_memory',
+      'supplier_orders',
+      'supplier_order_items',
       'sales',
       'sale_items',
       'sale_payments',
@@ -52,6 +54,8 @@ export class RecoveryPublicationService {
       'sale_adjustment_lines',
       'sale_credit_reductions',
       'inventory_movements',
+      'supplier_receipts',
+      'supplier_receipt_items',
       'inventory_balances',
       'sale_reconciliation_effects',
       'cash_movements',
@@ -68,9 +72,11 @@ export class RecoveryPublicationService {
       const all = [...columns, ...timestamps];
       const select = columns
         .map((c) =>
-          entity === 'events' && c === 'updated_at_server'
-            ? `coalesce(r."${c}",$3::timestamptz)`
-            : `r."${c}"`,
+          entity === 'product_variants' && c === 'current_supplier_id'
+            ? 'NULL::uuid'
+            : entity === 'events' && c === 'updated_at_server'
+              ? `coalesce(r."${c}",$3::timestamptz)`
+              : `r."${c}"`,
         )
         .concat(timestamps.map(() => '$3::timestamptz'));
       // Identifiers come solely from the reviewed closed schema above.
@@ -81,6 +87,10 @@ export class RecoveryPublicationService {
           : [id, entity],
       );
     }
+    await m.query(
+      `UPDATE product_variants v SET current_supplier_id=(s.row_data->>'current_supplier_id')::uuid FROM recovery_rows s WHERE s.recovery_id=$1 AND s.entity='product_variants' AND v.variant_id=(s.row_data->>'variant_id')::uuid`,
+      [id],
+    );
     const [badNet] = await m.query(
       'SELECT c.id FROM credit_sales c LEFT JOIN sale_credit_reductions r ON r.credit_id=c.id GROUP BY c.id HAVING sum(r.amount_minor)>c.amount_minor LIMIT 1',
     );

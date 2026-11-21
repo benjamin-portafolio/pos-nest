@@ -1,6 +1,9 @@
 import { ServerStateService } from '../recovery/server-state.service';
 import { SaleAdjustmentEventHandler } from './sale-adjustment-event.handler';
-import { adjustmentDuplicateMatches, isSaleAdjustment } from './payloads/sale-adjustment-identity';
+import {
+  adjustmentDuplicateMatches,
+  isSaleAdjustment,
+} from './payloads/sale-adjustment-identity';
 import { ProveedorEventHandler } from './proveedor-event.handler';
 import { SupplierJson } from './payloads/supplier-json';
 import { supplierEnvelopeError } from './payloads/supplier-event-envelope';
@@ -21,6 +24,7 @@ import { FinancialEntryEventHandler } from './financial-entry-event.handler';
 import { CategoriaFinancieraCreadaPayload } from './payloads/categoria-financiera-creada.payload';
 import { MovimientoFinancieroRegistradoPayload } from './payloads/movimiento-financiero-registrado.payload';
 import { VentaConfirmadaPayload } from './payloads/venta-confirmada.payload';
+import { SupplierOrderEventHandler } from './supplier-order-event.handler';
 import { ClienteEventHandler } from './cliente-event.handler';
 import { ClienteCreadoPayload } from './payloads/cliente-creado.payload';
 import { ClienteActualizadoPayload } from './payloads/cliente-actualizado.payload';
@@ -136,8 +140,11 @@ export class SyncService {
     @Optional()
     private readonly accountBalanceBaselineEventHandler?: AccountBalanceBaselineEventHandler,
     @Optional() private readonly proveedorEventHandler?: ProveedorEventHandler,
-    @Optional() private readonly saleAdjustmentEventHandler?: SaleAdjustmentEventHandler,
+    @Optional()
+    private readonly saleAdjustmentEventHandler?: SaleAdjustmentEventHandler,
     @Optional() private readonly recoveryState?: ServerStateService,
+    @Optional()
+    private readonly supplierOrderEventHandler?: SupplierOrderEventHandler,
   ) {}
 
   async health(): Promise<SyncHealthResponseDto> {
@@ -145,7 +152,17 @@ export class SyncService {
 
     return {
       status: 'ok',
-      capabilities: ['offer_pricing_v2', 'product_suppliers_v1', ...(this.saleAdjustmentEventHandler ? ['sale_adjustments_v1', 'sale_reconciliations_v1'] : [])],
+      capabilities: [
+        'offer_pricing_v2',
+        'product_suppliers_v1',
+        'supplier_replenishment_v1',
+        ...(this.supplierOrderEventHandler
+          ? ['supplier_orders_v1', 'supplier_receipts_v1']
+          : []),
+        ...(this.saleAdjustmentEventHandler
+          ? ['sale_adjustments_v1', 'sale_reconciliations_v1']
+          : []),
+      ],
       latest_server_sequence: latestServerSequence,
       server_time: new Date().toISOString(),
     };
@@ -362,19 +379,33 @@ export class SyncService {
     requestDeviceId: string,
     event: PushEventDto,
   ): Promise<PushEventResultDto> {
-    if(isSaleAdjustment(event?.event_type)) {const error=this.validateBaseEvent(requestDeviceId,event);if(error)return this.rejectedResult(event?.event_id,error);}
+    if (isSaleAdjustment(event?.event_type)) {
+      const error = this.validateBaseEvent(requestDeviceId, event);
+      if (error) return this.rejectedResult(event?.event_id, error);
+    }
     if (isSupplierContractEvent(event)) {
       const error = supplierEnvelopeError(event);
       if (error) return this.rejectedResult(event?.event_id, error);
-      event = { ...event, event_id: SupplierJson.uuid(event.event_id, 'event_id'), aggregate_id: SupplierJson.uuid(event.aggregate_id, 'aggregate_id') };
+      event = {
+        ...event,
+        event_id: SupplierJson.uuid(event.event_id, 'event_id'),
+        aggregate_id: SupplierJson.uuid(event.aggregate_id, 'aggregate_id'),
+      };
     }
     const duplicate = await this.dataSource
       .getRepository(EventEntity)
       .findOneBy({ eventId: event.event_id });
 
     if (duplicate) {
-      if (!adjustmentDuplicateMatches(event, duplicate) || !cashDuplicateMatches(event, duplicate) || !supplierDuplicateMatches(event, duplicate)) {
-        return this.rejectedResult(event.event_id, 'El event_id ya existe con otro contenido.');
+      if (
+        !adjustmentDuplicateMatches(event, duplicate) ||
+        !cashDuplicateMatches(event, duplicate) ||
+        !supplierDuplicateMatches(event, duplicate)
+      ) {
+        return this.rejectedResult(
+          event.event_id,
+          'El event_id ya existe con otro contenido.',
+        );
       }
       return this.toResult(
         duplicate,
@@ -389,10 +420,14 @@ export class SyncService {
       return this.rejectedResult(event.event_id, validationError);
     }
 
-    const isAdjustment = this.saleAdjustmentEventHandler?.supports(event.event_type) ?? false;
-    const isCashEvent = this.cashEventHandler?.supports(event.event_type) ?? false;
+    const isAdjustment =
+      this.saleAdjustmentEventHandler?.supports(event.event_type) ?? false;
+    const isCashEvent =
+      this.cashEventHandler?.supports(event.event_type) ?? false;
     const isPaymentEvent =
       this.abonoClienteEventHandler?.supports(event.event_type) ?? false;
+    const isSupplierOrderEvent =
+      this.supplierOrderEventHandler?.supports(event.event_type) ?? false;
     const isSupplierEvent =
       this.proveedorEventHandler?.supports(event.event_type) ?? false;
     const isClienteEvent =
@@ -421,6 +456,7 @@ export class SyncService {
       !isAdjustment &&
       !isClienteEvent &&
       !isSupplierEvent &&
+      !isSupplierOrderEvent &&
       !isPaymentEvent &&
       !isFinancialCategoryEvent &&
       !isFinancialEntryEvent &&
@@ -479,49 +515,74 @@ export class SyncService {
         // Financial retries must recheck after acquiring the event lock. An
         // optimistic read before the transaction lets two saves race: the loser
         // can overwrite the accepted event with a conflict outcome.
-        if (isSupplierEvent || isProductEvent || isAdjustment || isFinancialEntryEvent) {
+        if (
+          isSupplierOrderEvent ||
+          isSupplierEvent ||
+          isProductEvent ||
+          isAdjustment ||
+          isFinancialEntryEvent
+        ) {
           await manager.query(
             'SELECT pg_advisory_xact_lock(hashtextextended($1, 0))',
             ['event:' + event.event_id.toLowerCase()],
           );
-          const prior = await manager.findOneBy(EventEntity, { eventId: event.event_id });
+          const prior = await manager.findOneBy(EventEntity, {
+            eventId: event.event_id,
+          });
           if (prior) {
-            return supplierDuplicateMatches(event, prior) && adjustmentDuplicateMatches(event,prior)
-              ? this.toResult(prior, 'duplicate', prior.rejectionReason ?? undefined, { originalSyncStatus: prior.syncStatus })
-              : this.rejectedResult(event.event_id, 'El event_id ya existe con otro contenido.');
+            return supplierDuplicateMatches(event, prior) &&
+              adjustmentDuplicateMatches(event, prior)
+              ? this.toResult(
+                  prior,
+                  'duplicate',
+                  prior.rejectionReason ?? undefined,
+                  { originalSyncStatus: prior.syncStatus },
+                )
+              : this.rejectedResult(
+                  event.event_id,
+                  'El event_id ya existe con otro contenido.',
+                );
           }
         }
-        if (isCashEvent) return this.cashEventHandler!.apply(manager,event);
+        if (isCashEvent) return this.cashEventHandler!.apply(manager, event);
         const applyOperation = () => {
-        if (isAdjustment) return this.saleAdjustmentEventHandler!.apply(manager,event);
-        if (isPaymentEvent)
-          return this.abonoClienteEventHandler!.apply(manager, event);
-        if (isSupplierEvent)
-          return this.proveedorEventHandler!.apply(manager, event);
-        if (isClienteEvent)
-          return this.clienteEventHandler!.apply(manager, event);
-        if (isSaleEvent) return this.ventaEventHandler!.apply(manager, event);
-        if (isCategoryEvent) {
-          return this.categoriaEventHandler!.apply(manager, event);
-        }
-        if (isProductEvent) {
-          return this.productoEventHandler!.apply(manager, event);
-        }
-        if (isInventoryEvent) {
-          return this.inventoryEventHandler!.apply(manager, event);
-        }
-        if (isFinancialCategoryEvent) {
-          return this.financialCategoryEventHandler!.apply(manager, event);
-        }
-        if (isFinancialEntryEvent) {
-          return this.financialEntryEventHandler!.apply(manager, event);
-        }
-        if (isBankBalanceEvent) {
-          return this.accountBalanceBaselineEventHandler!.apply(manager, event);
-        }
-        return this.applyEspacioCreado(manager, event);
+          if (isAdjustment)
+            return this.saleAdjustmentEventHandler!.apply(manager, event);
+          if (isPaymentEvent)
+            return this.abonoClienteEventHandler!.apply(manager, event);
+          if (isSupplierOrderEvent)
+            return this.supplierOrderEventHandler!.apply(manager, event);
+          if (isSupplierEvent)
+            return this.proveedorEventHandler!.apply(manager, event);
+          if (isClienteEvent)
+            return this.clienteEventHandler!.apply(manager, event);
+          if (isSaleEvent) return this.ventaEventHandler!.apply(manager, event);
+          if (isCategoryEvent) {
+            return this.categoriaEventHandler!.apply(manager, event);
+          }
+          if (isProductEvent) {
+            return this.productoEventHandler!.apply(manager, event);
+          }
+          if (isInventoryEvent) {
+            return this.inventoryEventHandler!.apply(manager, event);
+          }
+          if (isFinancialCategoryEvent) {
+            return this.financialCategoryEventHandler!.apply(manager, event);
+          }
+          if (isFinancialEntryEvent) {
+            return this.financialEntryEventHandler!.apply(manager, event);
+          }
+          if (isBankBalanceEvent) {
+            return this.accountBalanceBaselineEventHandler!.apply(
+              manager,
+              event,
+            );
+          }
+          return this.applyEspacioCreado(manager, event);
         };
-        return this.cashEventHandler ? this.cashEventHandler.operation(manager,event,applyOperation) : applyOperation();
+        return this.cashEventHandler
+          ? this.cashEventHandler.operation(manager, event, applyOperation)
+          : applyOperation();
       });
     } catch (error) {
       if (!this.isUniqueViolation(error)) throw error;
@@ -531,8 +592,15 @@ export class SyncService {
         .findOneBy({ eventId: event.event_id });
 
       if (duplicateAfterRace) {
-        if (!adjustmentDuplicateMatches(event, duplicateAfterRace) || !cashDuplicateMatches(event, duplicateAfterRace) || !supplierDuplicateMatches(event, duplicateAfterRace)) {
-          return this.rejectedResult(event.event_id, 'El event_id ya existe con otro contenido.');
+        if (
+          !adjustmentDuplicateMatches(event, duplicateAfterRace) ||
+          !cashDuplicateMatches(event, duplicateAfterRace) ||
+          !supplierDuplicateMatches(event, duplicateAfterRace)
+        ) {
+          return this.rejectedResult(
+            event.event_id,
+            'El event_id ya existe con otro contenido.',
+          );
         }
         return this.toResult(
           duplicateAfterRace,
@@ -542,16 +610,43 @@ export class SyncService {
         );
       }
 
-      if (isAdjustment) return this.dataSource.transaction(m=>this.saleAdjustmentEventHandler!.outcome(m,event,'rejected','Identidad de operación o efecto ya utilizada.'));
+      if (isAdjustment)
+        return this.dataSource.transaction((m) =>
+          this.saleAdjustmentEventHandler!.outcome(
+            m,
+            event,
+            'rejected',
+            'Identidad de operación o efecto ya utilizada.',
+          ),
+        );
       if ((isSupplierEvent || isProductEvent) && event.local_sequence != null) {
         const sameSequence = await this.dataSource
           .getRepository(EventEntity)
-          .findOneBy({ deviceId: event.device_id, localSequence: event.local_sequence });
+          .findOneBy({
+            deviceId: event.device_id,
+            localSequence: event.local_sequence,
+          });
         if (sameSequence) {
-          return this.rejectedResult(event.event_id, 'La secuencia local ya pertenece a otro evento.');
+          return this.rejectedResult(
+            event.event_id,
+            'La secuencia local ya pertenece a otro evento.',
+          );
         }
       }
-      if (this.cashEventHandler && (isCashEvent || CashOperationPayload.fromEvent(event)!=null)) return this.dataSource.transaction(manager=>this.cashEventHandler!.conflict(manager,event,'Identidad de caja o movimiento ya utilizada.',isCashEvent?event.aggregate_id:CashOperationPayload.fromEvent(event)!.cash.sessionId));
+      if (
+        this.cashEventHandler &&
+        (isCashEvent || CashOperationPayload.fromEvent(event) != null)
+      )
+        return this.dataSource.transaction((manager) =>
+          this.cashEventHandler!.conflict(
+            manager,
+            event,
+            'Identidad de caja o movimiento ya utilizada.',
+            isCashEvent
+              ? event.aggregate_id
+              : CashOperationPayload.fromEvent(event)!.cash.sessionId,
+          ),
+        );
       if (isPaymentEvent)
         return this.dataSource.transaction((manager) =>
           this.abonoClienteEventHandler!.saveUniqueViolationConflict(
@@ -559,9 +654,19 @@ export class SyncService {
             event,
           ),
         );
+      if (isSupplierOrderEvent)
+        return this.dataSource.transaction((manager) =>
+          this.supplierOrderEventHandler!.saveUniqueViolationConflict(
+            manager,
+            event,
+          ),
+        );
       if (isSupplierEvent)
         return this.dataSource.transaction((manager) =>
-          this.proveedorEventHandler!.saveUniqueViolationConflict(manager, event),
+          this.proveedorEventHandler!.saveUniqueViolationConflict(
+            manager,
+            event,
+          ),
         );
       if (isClienteEvent)
         return this.dataSource.transaction((manager) =>
@@ -636,13 +741,20 @@ export class SyncService {
     requestDeviceId: string,
     event: ReportConflictEventDto,
   ): Promise<ReportConflictResultDto> {
-    if(isSaleAdjustment(event?.event_type)) {const error=this.validateBaseEvent(requestDeviceId,event);if(error)return this.rejectedReportResult(event?.event_id,error);}
+    if (isSaleAdjustment(event?.event_type)) {
+      const error = this.validateBaseEvent(requestDeviceId, event);
+      if (error) return this.rejectedReportResult(event?.event_id, error);
+    }
     const duplicate = await this.dataSource
       .getRepository(EventEntity)
       .findOneBy({ eventId: event.event_id });
 
     if (duplicate) {
-      if(!adjustmentDuplicateMatches(event,duplicate)) return this.rejectedReportResult(event.event_id,'El event_id ya existe con otro contenido.');
+      if (!adjustmentDuplicateMatches(event, duplicate))
+        return this.rejectedReportResult(
+          event.event_id,
+          'El event_id ya existe con otro contenido.',
+        );
       return this.toReportResult(
         duplicate,
         'duplicate',
@@ -684,12 +796,28 @@ export class SyncService {
     }
 
     return this.dataSource.transaction(async (manager) => {
-      if(isSaleAdjustment(event.event_type)) {
-        await manager.query('SELECT pg_advisory_xact_lock(hashtextextended($1, 0))',['event:'+event.event_id.toLowerCase()]);
-        const prior=await manager.findOneBy(EventEntity,{eventId:event.event_id});
-        if(prior) return adjustmentDuplicateMatches(event,prior)?this.toReportResult(prior,'duplicate',prior.rejectionReason??undefined,{originalSyncStatus:prior.syncStatus}):this.rejectedReportResult(event.event_id,'El event_id ya existe con otro contenido.');
+      if (isSaleAdjustment(event.event_type)) {
+        await manager.query(
+          'SELECT pg_advisory_xact_lock(hashtextextended($1, 0))',
+          ['event:' + event.event_id.toLowerCase()],
+        );
+        const prior = await manager.findOneBy(EventEntity, {
+          eventId: event.event_id,
+        });
+        if (prior)
+          return adjustmentDuplicateMatches(event, prior)
+            ? this.toReportResult(
+                prior,
+                'duplicate',
+                prior.rejectionReason ?? undefined,
+                { originalSyncStatus: prior.syncStatus },
+              )
+            : this.rejectedReportResult(
+                event.event_id,
+                'El event_id ya existe con otro contenido.',
+              );
       }
-      return this.saveReportedConflict(manager,event);
+      return this.saveReportedConflict(manager, event);
     });
   }
 
@@ -1392,7 +1520,12 @@ export class SyncService {
       })
       .getRawOne<{ latest_server_sequence: string | number | null }>();
 
-    return Math.max(Number(result?.latest_server_sequence ?? 0),this.recoveryState?Number((await this.recoveryState.status()).baseline_high_watermark):0);
+    return Math.max(
+      Number(result?.latest_server_sequence ?? 0),
+      this.recoveryState
+        ? Number((await this.recoveryState.status()).baseline_high_watermark)
+        : 0,
+    );
   }
 
   private toNullableString(value: string | number | null | undefined) {

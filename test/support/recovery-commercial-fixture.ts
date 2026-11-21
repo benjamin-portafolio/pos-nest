@@ -1,3 +1,4 @@
+import { SupplierOrderEventHandler } from '../../src/sync/supplier-order-event.handler';
 /** A newly authored synthetic commercial history. Every business fact is applied
  * by the normal receiver before any package is built. Never repairs a rescue. */
 import { randomUUID } from 'node:crypto';
@@ -59,6 +60,8 @@ export async function authorCommercialRecoveryFixture(
     new AccountBalanceBaselineEventHandler(conflicts),
     new ProveedorEventHandler(conflicts),
     new SaleAdjustmentEventHandler(credit, conflicts),
+    undefined,
+    new SupplierOrderEventHandler(conflicts),
   );
   const device = 'recovery-fixture-source-A',
     user = 'fixture-operator';
@@ -187,6 +190,9 @@ export async function authorCommercialRecoveryFixture(
         offer_price_minor: 450,
         standard_cost_minor: 300,
         minimum_stock_atomic: 2,
+        ...(process.env.POS_SUPPLIER_S2 === '1'
+          ? { current_supplier_id: supplier, target_stock_atomic: 7 }
+          : {}),
         inventory_item_id: resource,
         recipe_components: [],
         sort_order: 0,
@@ -921,10 +927,134 @@ export async function authorCommercialRecoveryFixture(
       notes: null,
     });
   }
+  let supplierOrder: string | undefined;
+  let supplierReceipt: string | undefined;
+  if (process.env.POS_SUPPLIER_S3 === '1') {
+    supplierOrder = randomUUID();
+    const [v] = await db.query(
+      `SELECT v.*,p.name product_name FROM product_variants v JOIN products p USING(product_id) WHERE v.variant_id=$1`,
+      [variant],
+    );
+    const [s] = await db.query('SELECT * FROM suppliers WHERE supplier_id=$1', [
+      supplier,
+    ]);
+    const [i] = await db.query(
+      'SELECT * FROM inventory_items WHERE inventory_item_id=$1',
+      [v.inventory_item_id],
+    );
+    const [u] = await db.query('SELECT * FROM units WHERE unit_id=$1', [
+      i.default_unit_id,
+    ]);
+    const [q] = await db.query(
+      'SELECT * FROM variant_suppliers WHERE variant_id=$1 AND supplier_id=$2',
+      [variant, supplier],
+    );
+    const document = {
+      contract_version: 1,
+      order_id: supplierOrder,
+      base_event_id: null,
+      supplier_id: supplier,
+      supplier_name_snapshot: s.name,
+      supplier_phone_snapshot: s.phone,
+      currency: 'MXN',
+      occurred_at_ms: clock + 1000,
+      notes: 'Pedido histórico S3',
+      items: [
+        {
+          id: randomUUID(),
+          variant_id: variant,
+          inventory_item_id: v.inventory_item_id,
+          unit_id: u.unit_id,
+          product_name_snapshot: v.product_name,
+          variant_name_snapshot: v.name,
+          dimension: u.dimension,
+          unit_code_snapshot: u.code,
+          unit_symbol_snapshot: u.symbol,
+          unit_atomic_factor: Number(u.atomic_factor),
+          reference_quantity_atomic: 1,
+          quantity_atomic: 4,
+          quoted_price_minor: Number(q.quoted_price_minor),
+          total_minor: Number(q.quoted_price_minor) * 4,
+        },
+      ],
+      total_minor: Number(q.quoted_price_minor) * 4,
+    };
+    const draft = await push(
+      'supplier_order_draft_saved',
+      'supplier_order',
+      supplierOrder,
+      document,
+    );
+    const confirmation = await push(
+      'supplier_order_confirmed',
+      'supplier_order',
+      supplierOrder,
+      {
+        ...document,
+        base_event_id: draft.event_id,
+        occurred_at_ms: clock + 1000,
+      },
+      1,
+      draft.sequence,
+    );
+    if (process.env.POS_SUPPLIER_S4 === '1') {
+      supplierReceipt = randomUUID();
+      const receipt = await push(
+        'supplier_receipt_confirmed',
+        'supplier_order',
+        supplierOrder,
+        {
+          contract_version: 1,
+          order_id: supplierOrder,
+          base_event_id: confirmation.event_id,
+          receipt_id: supplierReceipt,
+          occurred_at_ms: clock + 1000,
+          total_minor: 360,
+          items: [
+            {
+              order_item_id: document.items[0].id,
+              movement_id: randomUUID(),
+              quantity_atomic: 3,
+              actual_price_minor: 120,
+              reference_quantity_atomic: 1,
+              total_minor: 360,
+              overage_acknowledged: false,
+            },
+          ],
+        },
+        2,
+        confirmation.sequence,
+      );
+      await push(
+        'supplier_order_closed',
+        'supplier_order',
+        supplierOrder,
+        {
+          contract_version: 1,
+          order_id: supplierOrder,
+          base_event_id: receipt.event_id,
+          occurred_at_ms: clock + 1000,
+          items: [
+            { order_item_id: document.items[0].id, closed_quantity_atomic: 1 },
+          ],
+        },
+        3,
+        receipt.sequence,
+      );
+    }
+  }
   const manifest = JSON.parse(JSON.stringify(sourceManifest));
   manifest.package_id = randomUUID();
   manifest.cut_at = new Date(clock + 1000).toISOString();
   manifest.source.device_id = device;
+  if (
+    process.env.POS_SUPPLIER_S2 === '1' ||
+    process.env.POS_SUPPLIER_S3 === '1'
+  ) {
+    manifest.source.schema_version = 11;
+    manifest.source.schema_fingerprint =
+      '22b3497e2ff19dd0cc02e2dc928bb03d4a0ea755a0cb76ab18dffc3fc15a1c26';
+  }
   manifest.checkpoint = {
     last_full_pull_sequence: null,
     last_full_pull_at: null,
@@ -1015,6 +1145,8 @@ export async function authorCommercialRecoveryFixture(
     manifest,
     chunks,
     ids: {
+      supplierOrder,
+      supplierReceipt,
       customer,
       product,
       variant,

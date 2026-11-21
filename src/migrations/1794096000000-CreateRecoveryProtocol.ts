@@ -1,9 +1,43 @@
 import { randomUUID } from 'node:crypto';
 import { MigrationInterface, QueryRunner } from 'typeorm';
-import {
-  BUSINESS_TABLES,
-  SCHEMA_FINGERPRINT_SQL,
-} from '../recovery/recovery-schema';
+import { SCHEMA_FINGERPRINT_SQL } from '../recovery/recovery-schema';
+
+// Inventario histórico congelado: migraciones posteriores agregan sus propias protecciones.
+const BUSINESS_TABLES = [
+  'account_balance_baselines',
+  'cash_movements',
+  'cash_sessions',
+  'categories',
+  'clientes',
+  'credit_allocations',
+  'credit_sales',
+  'customer_payments',
+  'espacios',
+  'event_refs',
+  'events',
+  'financial_categories',
+  'financial_entries',
+  'inventory_balances',
+  'inventory_items',
+  'inventory_movements',
+  'product_variants',
+  'products',
+  'recipe_components',
+  'sale_adjustment_lines',
+  'sale_adjustments',
+  'sale_credit_reductions',
+  'sale_items',
+  'sale_payments',
+  'sale_reconciliation_credit_allocations',
+  'sale_reconciliation_effects',
+  'sales',
+  'suppliers',
+  'sync_conflict_participants',
+  'sync_conflicts',
+  'units',
+  'variant_inventory_memory',
+  'variant_suppliers',
+] as const;
 
 export class CreateRecoveryProtocol1794096000000 implements MigrationInterface {
   async up(q: QueryRunner): Promise<void> {

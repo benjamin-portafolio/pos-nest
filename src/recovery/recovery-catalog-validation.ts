@@ -249,7 +249,23 @@ export async function validateRecoveryCatalog(m: EntityManager) {
             id,
             'base_sequence',
           );
-        current = p.after;
+        const merged = p.after.toJson() as any;
+        for (const variant of merged.variants) {
+          const prior = current?.variants.find(
+            (v) => v.id === variant.variant_id,
+          );
+          if (
+            !Object.hasOwn(variant, 'current_supplier_id') &&
+            prior?.currentSupplierId !== undefined
+          )
+            variant.current_supplier_id = prior.currentSupplierId;
+          if (
+            !Object.hasOwn(variant, 'target_stock_atomic') &&
+            prior?.targetStockAtomic !== undefined
+          )
+            variant.target_stock_atomic = prior.targetStockAtomic;
+        }
+        current = ProductoCreadoPayload.fromJson(merged);
         active = !p.deleteProduct;
         version++;
       } else if (e.event_type === CategoriaEliminadaPayload.eventType) {
@@ -374,7 +390,17 @@ export async function validateRecoveryCatalog(m: EntityManager) {
         }
         if (next) {
           check(active, 'product_variants', after, 'reactivated_tombstone');
-          value = next;
+          value = {
+            ...next,
+            currentSupplierId:
+              next.currentSupplierId === undefined
+                ? value?.currentSupplierId
+                : next.currentSupplierId,
+            targetStockAtomic:
+              next.targetStockAtomic === undefined
+                ? value?.targetStockAtomic
+                : next.targetStockAtomic,
+          };
           creator ??= e;
           last = e;
           version =
@@ -417,6 +443,11 @@ export async function validateRecoveryCatalog(m: EntityManager) {
             value.minimumStockAtomic == null
               ? null
               : String(value.minimumStockAtomic),
+          current_supplier_id: value.currentSupplierId ?? null,
+          target_stock_atomic:
+            value.targetStockAtomic == null
+              ? null
+              : String(value.targetStockAtomic),
           inventory_item_id: value.inventoryItemId,
           sort_order: value.sortOrder,
         },

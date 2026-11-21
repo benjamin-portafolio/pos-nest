@@ -1,3 +1,9 @@
+import { SupplierReceiptConfirmedPayload } from '../sync/payloads/supplier-receipt-confirmed-payload';
+import { SupplierOrderClosedPayload } from '../sync/payloads/supplier-order-closed-payload';
+import { validateRecoverySupplierOrders } from './recovery-supplier-order-validation';
+import { SupplierOrderDraftSavedPayload } from '../sync/payloads/supplier-order-draft-saved-payload';
+import { SupplierOrderConfirmedPayload } from '../sync/payloads/supplier-order-confirmed-payload';
+import { SupplierOrderCancelledPayload } from '../sync/payloads/supplier-order-cancelled-payload';
 import { assertRecoveryProductShape } from './recovery-product-shape';
 import { validateRecoverySales } from './recovery-sales-validation';
 import { validateRecoveryCash } from './recovery-cash-validation';
@@ -97,6 +103,11 @@ export class RecoveryValidationService {
     );
     if (unitMismatch) recoveryError(422, 'invalid_seed_units');
     const parsers = [
+      SupplierReceiptConfirmedPayload,
+      SupplierOrderClosedPayload,
+      SupplierOrderDraftSavedPayload,
+      SupplierOrderConfirmedPayload,
+      SupplierOrderCancelledPayload,
       ProveedorCreadoPayload,
       ProveedorActualizadoPayload,
       ClienteCreadoPayload,
@@ -267,6 +278,7 @@ export class RecoveryValidationService {
     );
     if (missingProvenance)
       recoveryError(422, 'missing_event_provenance', missingProvenance);
+    await validateRecoverySupplierOrders(m);
     await validateRecoveryCatalog(m);
     await validateRecoverySales(m);
     await validateRecoveryReconciliations(m, manifest.recovery_id);

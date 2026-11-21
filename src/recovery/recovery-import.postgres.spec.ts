@@ -1,3 +1,4 @@
+import { CreateSupplierOrders1795046400000 } from '../migrations/1795046400000-CreateSupplierOrders';
 import { mkdtempSync, writeFileSync, rmSync } from 'node:fs';
 import { execFile, execFileSync } from 'node:child_process';
 import { promisify } from 'node:util';
@@ -209,18 +210,21 @@ integration(
       );
       expect(identity).toEqual({
         database: 'pos_nest_test_recovery_s4',
-        directory: '/tmp/pos-recovery-s4-pg',
+        directory: process.env.POS_RECOVERY_PG_DIRECTORY ?? '/tmp/pos-recovery-s4-pg',
       });
       await db.query('DROP SCHEMA public CASCADE');
       await db.query('CREATE SCHEMA public');
       await db.query('CREATE EXTENSION IF NOT EXISTS "uuid-ossp"');
       await db.synchronize();
+      await db.query('DROP TABLE supplier_receipt_items,supplier_receipts,supplier_order_items,supplier_orders');
+      await db.query('ALTER TABLE product_variants DROP COLUMN current_supplier_id, DROP COLUMN target_stock_atomic');
       const q = db.createQueryRunner();
       await q.startTransaction();
       try {
         await new CreateRecoveryProtocol1794096000000().up(q);
         await new CreateRecoveryDataset1794182400000().up(q);
         await new CreateConnectionAttempts1794355200000().up(q);
+        await new CreateSupplierOrders1795046400000().up(q);
         await q.commitTransaction();
       } catch (e) {
         await q.rollbackTransaction();

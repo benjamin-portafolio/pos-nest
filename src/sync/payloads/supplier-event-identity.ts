@@ -65,6 +65,7 @@ function hasProductContractFields(payload: Record<string, unknown>): boolean {
 /** Sobre estricto compartido por proveedores y los campos actuales de producto. */
 export function isSupplierContractEvent(event: PushEventDto): boolean {
   return (
+    event?.aggregate_type === 'supplier_order' ||
     event?.event_type === ProveedorCreadoPayload.eventType ||
     event?.event_type === ProveedorActualizadoPayload.eventType ||
     (event?.aggregate_type === 'product' &&
@@ -77,6 +78,7 @@ export function supplierDuplicateMatches(
   old: EventEntity,
 ): boolean {
   const relevant =
+    event.aggregate_type === 'supplier_order' || old.aggregateType === 'supplier_order' ||
     event.aggregate_type === 'supplier' ||
     old.aggregateType === 'supplier' ||
     (event.aggregate_type === 'product' &&

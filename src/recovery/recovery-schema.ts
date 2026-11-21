@@ -28,6 +28,10 @@ export const BUSINESS_TABLES = [
   'sale_reconciliation_effects',
   'sales',
   'suppliers',
+  'supplier_orders',
+  'supplier_order_items',
+  'supplier_receipts',
+  'supplier_receipt_items',
   'sync_conflict_participants',
   'sync_conflicts',
   'units',
@@ -93,6 +97,7 @@ export const ADMITTED_MIGRATIONS = [
   'CreateRecoveryDataset1794182400000',
   'AlignOfferPricingComment1794268800000',
   'CreateConnectionAttempts1794355200000',
+  'CreateSupplierOrders1795046400000',
 ];
 
 /** Transport only: unavailable remote conflict history cannot be recreated from local rows.
