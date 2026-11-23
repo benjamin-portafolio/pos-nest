@@ -44,6 +44,24 @@ $ npm run start:dev
 $ npm run start:prod
 ```
 
+## Usuario PostgreSQL en desarrollo
+
+Por defecto, el backend exige un usuario PostgreSQL sin privilegios administrativos,
+sin propiedad sobre las tablas del sistema y sin permiso CREATE en el esquema.
+Para usar `postgres` durante el desarrollo local, agrega a tu `.env`:
+
+```dotenv
+NODE_ENV=development
+POS_ALLOW_UNSAFE_DB_ROLE=1
+```
+
+La excepción requiere ambos valores exactos y registra una advertencia al arrancar.
+Las comprobaciones de tablas y estado de recuperación siguen activas.
+`npm run start:prod` fija `NODE_ENV=production`, por lo que la excepción no se
+aplica aunque esté habilitada en `.env`. Si arrancas por otro medio en producción,
+configura también `NODE_ENV=production`. Usa un usuario restringido para el backend
+y un operador separado para las migraciones.
+
 ## Run tests
 
 ```bash

@@ -1,9 +1,11 @@
-import { Injectable, OnModuleInit } from '@nestjs/common';
+import { Injectable, Logger, OnModuleInit } from '@nestjs/common';
 import { DataSource } from 'typeorm';
 import { BUSINESS_TABLES, TECHNICAL_TABLES } from './recovery-schema';
-/** The HTTP/WS process must not be able to disable the database gate or perform DDL. */
+/** Enforce a restricted runtime role, with an explicit local development exception. */
 @Injectable()
 export class RecoveryRuntimePolicyService implements OnModuleInit {
+  private readonly logger = new Logger(RecoveryRuntimePolicyService.name);
+
   constructor(private readonly db: DataSource) {}
   async onModuleInit() {
     const [role] = await this.db.query(
@@ -17,10 +19,20 @@ export class RecoveryRuntimePolicyService implements OnModuleInit {
     const [ddl] = await this.db.query(
       "SELECT has_schema_privilege(current_schema(),'CREATE') AS allowed",
     );
-    if (Object.values(role).some(Boolean) || owned.length || ddl.allowed)
-      throw new Error(
-        'Unsafe runtime PostgreSQL role: require non-owner, no privileged memberships or schema CREATE; use a separate migration operator',
+    const unsafeRole =
+      Object.values(role).some(Boolean) || owned.length > 0 || ddl.allowed;
+    const allowUnsafeRole =
+      process.env.NODE_ENV === 'development' &&
+      process.env.POS_ALLOW_UNSAFE_DB_ROLE === '1';
+    if (unsafeRole) {
+      if (!allowUnsafeRole)
+        throw new Error(
+          'Unsafe runtime PostgreSQL role: require non-owner, no privileged memberships or schema CREATE; use a separate migration operator',
+        );
+      this.logger.warn(
+        'Privileged PostgreSQL role allowed for development by POS_ALLOW_UNSAFE_DB_ROLE=1; database recovery protections can be bypassed by this role',
       );
+    }
     const [datasetSchema] = await this.db.query(
       "SELECT to_regclass('recovery_rows') IS NOT NULL AND to_regclass('recovery_datasets') IS NOT NULL AND to_regclass('recovery_dataset_chunks') IS NOT NULL AND to_regclass('recovery_bootstrap_grants') IS NOT NULL AS installed",
     );
