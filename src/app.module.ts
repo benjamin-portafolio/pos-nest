@@ -1,3 +1,6 @@
+import { RecoveryAdministrationController } from './recovery/recovery-administration.controller';
+import { RecoveryAdministrationService } from './recovery/recovery-administration.service';
+import { RecoveryAdminGuard } from './recovery/recovery-admin.guard';
 import { CreateSupplierOrders1795046400000 } from './migrations/1795046400000-CreateSupplierOrders';
 import { SupplierOrderEntity } from './entities/supplier-order.entity';
 import { SupplierOrderItemEntity } from './entities/supplier-order-item.entity';
@@ -165,6 +168,7 @@ import { FinancialReportController } from './reports/financial-report.controller
     }),
   ],
   controllers: [
+    RecoveryAdministrationController,
     RecoveryController,
     ConnectionAttemptController,
     BaselineBootstrapController,
@@ -174,6 +178,8 @@ import { FinancialReportController } from './reports/financial-report.controller
     FinancialReportController,
   ],
   providers: [
+    RecoveryAdministrationService,
+    RecoveryAdminGuard,
     RecoveryRuntimePolicyService,
     ConnectionAttemptService,
     RecoverySessionService,

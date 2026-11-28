@@ -114,3 +114,19 @@ Nest is an MIT-licensed open source project. It can grow thanks to the sponsors 
 ## License
 
 Nest is [MIT licensed](https://github.com/nestjs/nest/blob/master/LICENSE).
+
+## Administración de recuperación
+
+La pantalla de escritorio y la configuración de su credencial se describen en
+[Administración de recuperación](docs/recovery-administration.md).
+
+Para establecer o cambiar la contraseña administrativa durante la instalación:
+
+```sh
+npm run build
+npm run admin:password
+```
+
+El asistente confirma la contraseña sin mostrarla y guarda su hash Argon2id en
+`.env`. Reiniciar NestJS después de guardarla. Ver la guía enlazada para rutas
+personalizadas y compatibilidad con las credenciales anteriores.
